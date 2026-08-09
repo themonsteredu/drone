@@ -3,10 +3,18 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("keeps browser hardware APIs in a client-only diagnostics component", async () => {
-  const [page, component] = await Promise.all([
+  const [page, component, simpleUi, simulator] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(
       new URL("../src/components/controller-diagnostics.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/controller-simple-ui.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/drone-simulator.tsx", import.meta.url),
       "utf8",
     ),
   ]);
@@ -26,6 +34,33 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(component, /Left X/);
   assert.match(component, /Right Y/);
   assert.match(component, /Controller input mapping not identified yet/);
+  assert.match(component, /<details className="developer-details">/);
+  assert.match(component, /개발자 정보 보기/);
+  assert.match(component, /<DroneSimulator/);
+  assert.match(simpleUi, /조종기 상태/);
+  assert.match(simpleUi, /왼쪽 스틱/);
+  assert.match(simpleUi, /최근 눌린 버튼/);
+  assert.match(simulator, /가상 드론 테스트/);
+  assert.match(simulator, /dispatchFlightAction\("takeoff"\)/);
+  assert.match(simulator, /dispatchFlightAction\("land"\)/);
+  assert.match(simulator, /dispatchFlightAction\("reset"\)/);
+  assert.match(simulator, /dispatchFlightAction\("emergency"\)/);
+  assert.match(simulator, /BUTTON_MAPPING_STORAGE_KEY/);
+  assert.match(simulator, /controllerState\.buttonTransitions/);
+  assert.doesNotMatch(simulator, /diagnostics\/button-event-journal/);
+  assert.match(simulator, /INPUT_STALE_AFTER_MS = 500/);
+});
+
+test("keeps Gamepad stick, button, and transition evidence independent", async () => {
+  const adapter = await readFile(
+    new URL("../src/controllers/adapters/gamepad-adapter.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(adapter, /axisChangedEver/);
+  assert.match(adapter, /buttonChangedEver/);
+  assert.match(adapter, /buttonTransitions/);
+  assert.match(adapter, /phase: pressed \? "down" : "up"/);
 });
 
 test("contains the requested adapter and protocol module boundaries", async () => {
@@ -42,6 +77,9 @@ test("contains the requested adapter and protocol module boundaries", async () =
     "../src/controllers/protocols/byrobot/types.ts",
     "../src/controllers/protocols/byrobot/controller-input.ts",
     "../src/controllers/diagnostics/data-type-monitor.ts",
+    "../src/controllers/diagnostics/button-event-journal.ts",
+    "../src/simulator/flight-model.ts",
+    "../src/simulator/button-mapping.ts",
   ];
 
   await Promise.all(files.map((file) => readFile(new URL(file, import.meta.url), "utf8")));

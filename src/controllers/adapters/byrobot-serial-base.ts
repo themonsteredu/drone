@@ -12,6 +12,9 @@ import {
   type DataTypeWindowEntry,
 } from "../diagnostics/data-type-monitor";
 import {
+  ControllerButtonEventJournal,
+} from "../diagnostics/button-event-journal";
+import {
   BYROBOT_DATA_TYPE_BUTTON,
   BYROBOT_DATA_TYPE_JOYSTICK,
   ByrobotControllerInputTracker,
@@ -41,6 +44,7 @@ import {
   type ControllerAdapter,
   type ControllerDiagnostics,
   type ControllerError,
+  type ControllerButtonTransition,
   type ControllerState,
   type DetectionContext,
   type DeviceInfo,
@@ -97,6 +101,7 @@ export interface ByrobotSerialSnapshot {
   activationPingLastAt: number | null;
   dataTypeStats: DataTypeWindowEntry[];
   controllerInput: ByrobotControllerInputSnapshot;
+  buttonTransitions: ControllerButtonTransition[];
   inputAcquisition: ControllerInputAcquisitionSnapshot;
 }
 
@@ -114,6 +119,7 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   private readonly connection: SerialConnection;
   private readonly detector = new DataChangeDetector();
   private readonly dataTypeMonitor = new ByrobotDataTypeMonitor();
+  private readonly buttonEventJournal = new ControllerButtonEventJournal();
   private readonly inputTracker: ByrobotControllerInputTracker;
   private readonly listeners = new Set<Listener>();
   private rawEntries: RawSerialEntry[] = [];
@@ -144,7 +150,6 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   private inputPollingGeneration = 0;
   private writeQueue: Promise<void> = Promise.resolve();
   private sessionGeneration = 0;
-  private buttonPressedState = Array.from({ length: 16 }, () => false);
   private startCodeSeen = false;
   private previousByte: number | null = null;
   private logPaused = false;
@@ -428,6 +433,7 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
       activationPingLastAt: this.activationPingLastAt,
       dataTypeStats: this.dataTypeMonitor.snapshot(now),
       controllerInput,
+      buttonTransitions: this.buttonEventJournal.snapshot(),
       inputAcquisition: {
         mode:
           this.inputPollingIntervalMs === null
@@ -638,26 +644,20 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   }
 
   private applyButtonState(input: ByrobotButtonInput): void {
-    for (let index = 0; index < 16; index += 1) {
-      const included = (input.button & (1 << index)) !== 0;
-      if (!included) continue;
-      if (input.event === 1 || input.event === 2) {
-        this.buttonPressedState[index] = true;
-      } else if (input.event === 3) {
-        this.buttonPressedState[index] = false;
-      }
-    }
+    this.buttonEventJournal.observe(input.button, input.event, input.receivedAt);
+    const buttonPressedState = this.buttonEventJournal.pressedSnapshot();
     this.state = {
       ...this.state,
       rawButtons: Array.from({ length: 16 }, (_, index) =>
         (input.button & (1 << index)) !== 0 ? 1 : 0,
       ),
       buttons: Object.fromEntries(
-        this.buttonPressedState.map((pressed, index) => [
+        buttonPressedState.map((pressed, index) => [
           `button_bit_${index}`,
           pressed,
         ]),
       ),
+      buttonTransitions: this.buttonEventJournal.snapshot(),
     };
   }
 
@@ -703,6 +703,7 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     this.detector.reset();
     this.dataTypeMonitor.reset();
     this.inputTracker.reset();
+    this.buttonEventJournal.reset();
     this.state = createUnidentifiedState(false);
     this.diagnostics = createWaitingDiagnostics("serial");
     this.rawEntries = [];
@@ -729,7 +730,6 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     this.lastRequestedDataType = null;
     this.inputPollingCursor = 0;
     this.writeQueue = Promise.resolve();
-    this.buttonPressedState = Array.from({ length: 16 }, () => false);
     this.startCodeSeen = false;
     this.previousByte = null;
   }

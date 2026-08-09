@@ -54,6 +54,12 @@ const dataTypeMonitorModule = loadTypeScriptModule(
     import.meta.url,
   ),
 );
+const buttonEventJournalModule = loadTypeScriptModule(
+  new URL(
+    "../src/controllers/diagnostics/button-event-journal.ts",
+    import.meta.url,
+  ),
+);
 const calibrationModule = loadTypeScriptModule(
   new URL("../src/controllers/calibration.ts", import.meta.url),
 );
@@ -79,7 +85,12 @@ const {
   isByrobotControllerInputActive,
 } = inputModule;
 const { ByrobotDataTypeMonitor } = dataTypeMonitorModule;
-const { projectMappedControllerState } = calibrationModule;
+const { ControllerButtonEventJournal } = buttonEventJournalModule;
+const {
+  createFixedAxisProfile,
+  normalizeCalibratedAxis,
+  projectMappedControllerState,
+} = calibrationModule;
 const { createUnidentifiedState } = controllerTypesModule;
 const { LEGACY_LINK_PROFILE } = typesModule;
 
@@ -378,6 +389,86 @@ test("decodes Button uint16 little-endian, event, and session input evidence", (
   assert.equal(isByrobotControllerInputActive(evidence), true);
 });
 
+test("journals a quick Button Down to Up pair before a throttled UI snapshot", () => {
+  const journal = new ControllerButtonEventJournal();
+
+  journal.observe(0x0004, 1, 100);
+  journal.observe(0x0004, 3, 101);
+
+  assert.deepEqual(journal.snapshot(), [
+    {
+      sequence: 1,
+      observationSequence: 1,
+      buttonNumber: 3,
+      buttonId: "button_bit_2",
+      phase: "down",
+      at: 100,
+    },
+    {
+      sequence: 2,
+      observationSequence: 2,
+      buttonNumber: 3,
+      buttonId: "button_bit_2",
+      phase: "up",
+      at: 101,
+    },
+  ]);
+  assert.equal(journal.pressedSnapshot()[2], false);
+});
+
+test("keeps only actionable edges, caps transitions, and resets a session", () => {
+  const journal = new ControllerButtonEventJournal(4);
+
+  journal.observe(0x0001, 2, 1);
+  journal.observe(0x0001, 2, 2);
+  journal.observe(0x0001, 4, 3);
+  assert.deepEqual(
+    journal.snapshot().map(({ phase }) => phase),
+    ["down"],
+  );
+
+  for (let index = 0; index < 3; index += 1) {
+    journal.observe(0x0001, 3, 10 + index * 2);
+    journal.observe(0x0001, 1, 11 + index * 2);
+  }
+  const capped = journal.snapshot();
+  assert.equal(capped.length, 4);
+  assert.equal(capped.at(-1).sequence, 7);
+
+  journal.reset();
+  assert.deepEqual(journal.snapshot(), []);
+  assert.equal(journal.pressedSnapshot()[0], false);
+  journal.observe(0x0001, 1, 200);
+  assert.equal(journal.snapshot()[0].sequence, 1);
+  assert.equal(journal.snapshot()[0].observationSequence, 1);
+
+  const idle = new ControllerButtonEventJournal();
+  idle.observe(0x0001, 0, 300);
+  assert.deepEqual(idle.snapshot(), []);
+});
+
+test("preserves same-timestamp double taps in packet observation order", () => {
+  const journal = new ControllerButtonEventJournal();
+
+  journal.observe(0x0001, 1, 500);
+  journal.observe(0x0001, 3, 500);
+  journal.observe(0x0001, 1, 500);
+  journal.observe(0x0001, 3, 500);
+
+  assert.deepEqual(
+    journal.snapshot().map(({ phase, observationSequence }) => [
+      phase,
+      observationSequence,
+    ]),
+    [
+      ["down", 1],
+      ["up", 2],
+      ["down", 3],
+      ["up", 4],
+    ],
+  );
+});
+
 test("counts every valid DataType in a rolling five-second window", () => {
   const parser = new ByrobotPacketParser();
   const monitor = new ByrobotDataTypeMonitor();
@@ -433,4 +524,25 @@ test("projects calibrated raw axes into a real mapped Common ControllerState", (
   const incomplete = projectMappedControllerState(source, calibrations.slice(0, 3));
   assert.equal(incomplete.mappingStatus, "unidentified");
   assert.equal(incomplete.throttle, null);
+});
+
+test("creates the explicit BYROBOT stick profile with an exact 0.10 dead zone", () => {
+  const profile = createFixedAxisProfile(
+    [0.099, 0.1, -0.099, -0.6],
+    ["yaw", "throttle", "roll", "pitch"],
+    { deadZone: 0.1 },
+  );
+
+  assert.deepEqual(
+    profile.map((axis) => axis.normalizedValue),
+    [0, 0.1, 0, -0.6],
+  );
+  assert.deepEqual(
+    profile.map((axis) => axis.assignedControl),
+    ["yaw", "throttle", "roll", "pitch"],
+  );
+  assert.equal(
+    normalizeCalibratedAxis({ ...profile[3], inverted: true }),
+    0.6,
+  );
 });

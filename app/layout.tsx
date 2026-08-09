@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BYROBOT Controller Diagnostics",
+  title: "바이로봇 가상 드론 조종 테스트",
   description:
-    "Gamepad와 Web Serial로 바이로봇 USB 조종기의 연결, RAW 데이터, 패킷, 입력 상태를 단계별로 진단합니다.",
+    "바이로봇 USB 조종기를 연결해 스틱과 버튼을 확인하고 가상 드론 한 대를 조종하는 기초 시뮬레이터입니다.",
 };
 
 export default function RootLayout({

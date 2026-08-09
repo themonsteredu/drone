@@ -5,6 +5,11 @@ import {
 
 export type SemanticControl = "throttle" | "yaw" | "pitch" | "roll";
 
+export type AxisControlAssignment = readonly (
+  | SemanticControl
+  | null
+)[];
+
 export interface AxisCalibration {
   index: number;
   rawCurrent: number | null;
@@ -26,9 +31,42 @@ export function createAxisCalibration(index: number): AxisCalibration {
     center: null,
     normalizedValue: null,
     inverted: false,
-    deadZone: 0.05,
+    deadZone: 0.1,
     assignedControl: null,
   };
+}
+
+/**
+ * Creates an explicit, adapter-selected profile for a documented stick order.
+ * The simulator still consumes a mapped ControllerState and never reads packet
+ * payloads directly. Product adapters can supply a different assignment later.
+ */
+export function createFixedAxisProfile(
+  rawAxes: number[],
+  assignments: AxisControlAssignment,
+  options: {
+    deadZone?: number;
+    invertedAxes?: readonly number[];
+  } = {},
+): AxisCalibration[] {
+  const deadZone = Math.max(0, Math.min(0.95, options.deadZone ?? 0.1));
+  const inverted = new Set(options.invertedAxes ?? []);
+
+  return rawAxes.map((rawCurrent, index) => {
+    const axis: AxisCalibration = {
+      index,
+      rawCurrent,
+      observedMinimum: -1,
+      observedMaximum: 1,
+      center: 0,
+      normalizedValue: null,
+      inverted: inverted.has(index),
+      deadZone,
+      assignedControl: assignments[index] ?? null,
+    };
+    axis.normalizedValue = normalizeCalibratedAxis(axis);
+    return axis;
+  });
 }
 
 export function normalizeCalibratedAxis(
@@ -53,12 +91,9 @@ export function normalizeCalibratedAxis(
 
   let value = normalizeControllerValue((rawCurrent - center) / range);
   const magnitude = Math.abs(value);
-  if (magnitude <= axis.deadZone) value = 0;
-  else {
-    value =
-      Math.sign(value) *
-      ((magnitude - axis.deadZone) / Math.max(1 - axis.deadZone, 0.001));
-  }
+  // A hard dead zone matches the simulator contract and is idempotent if the
+  // flight safety layer applies the same threshold again.
+  if (magnitude < axis.deadZone) value = 0;
 
   return normalizeControllerValue(axis.inverted ? -value : value);
 }
@@ -137,6 +172,7 @@ export function projectMappedControllerState(
       pitch: values.pitch,
       roll: values.roll,
       buttons: { ...source.buttons },
+      buttonTransitions: source.buttonTransitions?.map((entry) => ({ ...entry })),
       rawAxes: source.rawAxes ? [...source.rawAxes] : [],
       rawButtons: source.rawButtons ? [...source.rawButtons] : [],
     };
@@ -150,6 +186,7 @@ export function projectMappedControllerState(
     pitch: null,
     roll: null,
     buttons: { ...source.buttons },
+    buttonTransitions: source.buttonTransitions?.map((entry) => ({ ...entry })),
     rawAxes: source.rawAxes ? [...source.rawAxes] : [],
     rawButtons: source.rawButtons ? [...source.rawButtons] : [],
   };

@@ -3,10 +3,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
+  createFixedAxisProfile,
   normalizeCalibratedAxis,
   observeRawAxes,
   projectMappedControllerState,
@@ -33,6 +35,11 @@ import {
   type ControllerState,
   type DiagnosticStage,
 } from "../controllers/types";
+import {
+  ControllerStatusPanel,
+  StickInputPanel,
+} from "./controller-simple-ui";
+import { DroneSimulator } from "./drone-simulator";
 
 type ApiSupport = {
   checked: boolean;
@@ -54,6 +61,12 @@ type GamepadView = GamepadRawSnapshot & {
 };
 
 const BAUD_RATES = [9600, 57600, 115200] as const;
+const BYROBOT_BASIC_STICK_ASSIGNMENTS = [
+  "yaw",
+  "throttle",
+  "roll",
+  "pitch",
+] as const satisfies readonly SemanticControl[];
 const CONTROLS: Array<{ value: SemanticControl; label: string }> = [
   { value: "throttle", label: "Throttle" },
   { value: "yaw", label: "Yaw" },
@@ -361,6 +374,12 @@ export function ControllerDiagnosticsPage() {
       usbDevices: 0,
     };
 
+    // Device enumeration can be delayed by a browser/driver. Report API
+    // support immediately so the basic Korean UI never stays on "checking".
+    const supportTimer = window.setTimeout(() => {
+      if (active) setSupport(next);
+    }, 0);
+
     Promise.all([
       navigator.hid?.getDevices().catch(() => []) ?? Promise.resolve([]),
       navigator.usb?.getDevices().catch(() => []) ?? Promise.resolve([]),
@@ -375,6 +394,7 @@ export function ControllerDiagnosticsPage() {
 
     return () => {
       active = false;
+      window.clearTimeout(supportTimer);
     };
   }, []);
 
@@ -771,27 +791,61 @@ export function ControllerDiagnosticsPage() {
       : activeMethod === "gamepad" && selectedGamepad
         ? `gamepad:${selectedGamepad.index}:${selectedGamepad.id}`
         : null;
-  const activeCalibrations =
-    calibrationOwnerKey === activeSourceKey ? calibrations : [];
+  const activeCalibrations = useMemo(
+    () => (calibrationOwnerKey === activeSourceKey ? calibrations : []),
+    [activeSourceKey, calibrationOwnerKey, calibrations],
+  );
   const activeAdapterState =
     activeMethod === "serial"
       ? serialState
       : selectedGamepad
         ? selectedGamepad.state
         : createUnidentifiedState(false);
-  const commonControllerState = projectMappedControllerState(
+  const controllerInput = serialSnapshot?.controllerInput ?? null;
+  const defaultSerialMappingAvailable = Boolean(
+    activeMethod === "serial" &&
+      controllerInput?.evidence.joystickDecoded &&
+      controllerInput.joystickUnsupportedReason === null &&
+      controllerInput.latestJoystick?.axesWithinDocumentedRange &&
+      activeRawAxes.length >= 4,
+  );
+  const defaultSerialCalibrations = defaultSerialMappingAvailable
+    ? createFixedAxisProfile(activeRawAxes, BYROBOT_BASIC_STICK_ASSIGNMENTS, {
+        deadZone: 0.1,
+      })
+    : [];
+  const userMappedControllerState = projectMappedControllerState(
     activeAdapterState,
     activeCalibrations,
   );
+  const usingUserMapping = userMappedControllerState.mappingStatus === "mapped";
+  const commonControllerState = usingUserMapping
+    ? userMappedControllerState
+    : projectMappedControllerState(
+        activeAdapterState,
+        defaultSerialCalibrations,
+      );
 
   useEffect(() => {
-    const profile =
-      calibrationOwnerKey === activeSourceKey ? calibrations : [];
-    manager.setStateProjector((state) =>
-      projectMappedControllerState(state, profile),
-    );
+    manager.setStateProjector((state) => {
+      const profile = usingUserMapping
+        ? activeCalibrations
+        : defaultSerialMappingAvailable
+          ? createFixedAxisProfile(
+              state.rawAxes ?? [],
+              BYROBOT_BASIC_STICK_ASSIGNMENTS,
+              { deadZone: 0.1 },
+            )
+          : [];
+      return projectMappedControllerState(state, profile);
+    });
     return () => manager.setStateProjector(null);
-  }, [activeSourceKey, calibrationOwnerKey, calibrations, manager]);
+  }, [
+    activeCalibrations,
+    defaultSerialMappingAvailable,
+    manager,
+    usingUserMapping,
+  ]);
   const mappedValues = {
     throttle: commonControllerState.throttle,
     yaw: commonControllerState.yaw,
@@ -800,11 +854,65 @@ export function ControllerDiagnosticsPage() {
   };
 
   const mappingComplete = commonControllerState.mappingStatus === "mapped";
-  const inputActive =
-    commonControllerState.connected &&
-    activeDiagnostics.inputActive.status === "pass";
+  const stickInputOk =
+    activeMethod === "serial"
+      ? Boolean(
+          controllerInput?.evidence.joystickDecoded &&
+            controllerInput.evidence.joystickChangedEver,
+        )
+      : activeMethod === "gamepad"
+        ? Boolean(selectedGamepad?.axisChangedEver)
+        : false;
+  const buttonInputOk =
+    activeMethod === "serial"
+      ? Boolean(
+          controllerInput?.evidence.buttonDecoded &&
+            controllerInput.evidence.buttonInteractionEver &&
+            controllerInput.evidence.buttonChangedEver,
+        )
+      : activeMethod === "gamepad"
+        ? Boolean(selectedGamepad?.buttonChangedEver)
+        : false;
+  const inputActive = Boolean(
+    commonControllerState.connected && stickInputOk && buttonInputOk,
+  );
   const ready =
     inputActive && mappingComplete && commonControllerState.connected;
+  const activeButtonTransitions = commonControllerState.buttonTransitions ?? [];
+  const recentButtonNumber =
+    [...activeButtonTransitions]
+      .reverse()
+      .find((event) => event.phase === "down")?.buttonNumber ??
+    selectedGamepad?.lastPressedButtonNumber ??
+    null;
+  const mappingSourceId =
+    activeMethod === "serial"
+      ? `serial:${portSelection?.usbVendorId ?? "unknown"}:${portSelection?.usbProductId ?? "unknown"}:${serialSnapshot?.adapterId ?? "byrobot"}`
+      : selectedGamepad
+        ? `gamepad:${selectedGamepad.id}`
+        : null;
+  const simpleConnected = Boolean(
+    serialSnapshot?.isOpen || selectedGamepad,
+  );
+  const serialConnected = Boolean(serialSnapshot?.isOpen);
+  const simpleStatusLabel = ready
+    ? "조종 준비 완료"
+    : simpleConnected && inputActive && !mappingComplete
+      ? "조종 설정 필요"
+      : simpleConnected
+        ? "입력 확인 중"
+        : "연결 필요";
+  const activeInputUpdatedAt =
+    activeMethod === "serial"
+      ? (controllerInput?.latestJoystick?.receivedAt ?? null)
+      : selectedGamepad?.state.updatedAt ?? null;
+  const simpleNotice = ready
+    ? "준비됐습니다. 이륙 버튼을 누른 뒤 스틱으로 드론을 움직여 보세요."
+    : simpleConnected
+      ? "스틱과 버튼을 한 번씩 움직여 입력을 확인해 주세요."
+      : portSelection
+        ? "조종기를 선택했습니다. 연결하기를 눌러 주세요."
+        : "조종기 선택부터 시작해 주세요.";
 
   let overallStatus = "NOT CONNECTED";
   if (ready) overallStatus = "READY";
@@ -831,7 +939,6 @@ export function ControllerDiagnosticsPage() {
   }
 
   const latestPacket = serialSnapshot?.latestPacket ?? null;
-  const controllerInput = serialSnapshot?.controllerInput ?? null;
   const dataTypeRows = serialSnapshot?.dataTypeStats ?? [
     {
       dataType: 0x71,
@@ -947,7 +1054,62 @@ export function ControllerDiagnosticsPage() {
   ];
 
   return (
-    <main className="diagnostics-shell">
+    <main className="diagnostics-shell controller-app">
+      <header className="pilot-header">
+        <div className="pilot-brand">
+          <span className="pilot-brand-mark" aria-hidden="true">BD</span>
+          <div>
+            <span>바이로봇 조종 연습</span>
+            <h1>가상 드론 테스트</h1>
+          </div>
+        </div>
+        <div className={ready ? "pilot-ready-badge is-ready" : "pilot-ready-badge"}>
+          <span aria-hidden="true" />
+          <strong>{simpleStatusLabel}</strong>
+        </div>
+      </header>
+
+      <section className="pilot-layout" aria-label="가상 드론 조종 화면">
+        <ControllerStatusPanel
+          serialSupported={support.serial}
+          supportChecked={support.checked}
+          portSelected={Boolean(portSelection)}
+          connected={simpleConnected}
+          serialConnected={serialConnected}
+          stickInputOk={stickInputOk}
+          buttonInputOk={buttonInputOk}
+          mappingComplete={mappingComplete}
+          ready={ready}
+          busy={serialBusy}
+          error={uiError}
+          notice={simpleNotice}
+          onSelectPort={selectSerialPort}
+          onConnect={connectSerial}
+          onActivateInput={activateByrobotInput}
+          onDisconnect={disconnectSerial}
+        />
+
+        <DroneSimulator
+          controllerState={commonControllerState}
+          controlsEnabled={ready}
+          sourceSessionKey={activeSourceKey}
+          mappingSourceId={mappingSourceId}
+          inputUpdatedAt={activeInputUpdatedAt}
+        />
+
+        <StickInputPanel
+          axes={activeRawAxes}
+          recentButtonNumber={recentButtonNumber}
+          connected={simpleConnected}
+        />
+      </section>
+
+      <details className="developer-details">
+        <summary>
+          <span>개발자 정보 보기</span>
+          <small>패킷, 원시 데이터, 연결 세부 정보</small>
+        </summary>
+        <div className="developer-details__body">
       <header className="site-header">
         <div className="brand-block">
           <span className="brand-mark">BD</span>
@@ -968,7 +1130,7 @@ export function ControllerDiagnosticsPage() {
       <section className="page-intro">
         <div>
           <p className="eyebrow">HARDWARE INPUT LAYER / BUILD 02</p>
-          <h1>Controller Diagnostics</h1>
+          <h2>Controller Diagnostics</h2>
           <p>
             장치 선택, 포트 열기, RAW 수신, 패킷 검증, 실제 입력 변화를 각각 분리해
             확인합니다. 장치가 선택되었다는 사실만으로 READY를 표시하지 않습니다.
@@ -1434,7 +1596,11 @@ export function ControllerDiagnosticsPage() {
               <h2 id="state-title">Common ControllerState</h2>
             </div>
             <span className={`mapping-tag ${mappingComplete ? "is-mapped" : ""}`}>
-              {mappingComplete ? "USER MAPPED" : "UNMAPPED"}
+              {mappingComplete
+                ? usingUserMapping
+                  ? "USER MAPPED"
+                  : "BASIC STICK MAPPED"
+                : "UNMAPPED"}
             </span>
           </div>
           {!mappingComplete ? (
@@ -1553,7 +1719,8 @@ export function ControllerDiagnosticsPage() {
           </div>
         )}
         <p className="calibration-help">
-          기본 채널 배정은 없습니다. 실제 조종기의 순서를 확인한 뒤 사용자가 축을 배정해야 하며, min &lt; center &lt; max가 기록되기 전에는 normalized 값을 만들지 않습니다.
+          시뮬레이터는 확인된 기본 배치(LX→Yaw, LY→Throttle, RX→Roll, RY→Pitch)를 사용합니다.
+          이 표에서 사용자 보정을 완료하면 사용자 설정이 기본 배치보다 우선합니다.
         </p>
       </section>
 
@@ -1574,7 +1741,14 @@ export function ControllerDiagnosticsPage() {
 
       <footer className="site-footer">
         <span>BYROBOT MULTI-CONTROLLER INPUT LAYER</span>
-        <span>NO 3D SIMULATOR IN THIS BUILD</span>
+        <span>VIRTUAL DRONE SIMULATOR · BUILD 01</span>
+      </footer>
+        </div>
+      </details>
+
+      <footer className="pilot-footer">
+        <span>바이로봇 가상 드론 조종 테스트</span>
+        <span>테스트 격자 · 드론 1대 · 기본 조종</span>
       </footer>
     </main>
   );

@@ -67,9 +67,22 @@ export interface ControllerDiagnostics {
   inputActive: DiagnosticStage;
 }
 
+export type ControllerButtonTransitionPhase = "down" | "up";
+
+/** Protocol-neutral edge stream shared by Serial and Gamepad adapters. */
+export interface ControllerButtonTransition {
+  sequence: number;
+  observationSequence: number;
+  buttonId: string;
+  buttonNumber: number;
+  phase: ControllerButtonTransitionPhase;
+  at: number;
+}
+
 interface ControllerStateBase {
   connected: boolean;
   buttons: Record<string, boolean>;
+  buttonTransitions?: ControllerButtonTransition[];
   rawAxes?: number[];
   rawButtons?: number[];
   controllerModel?: string;

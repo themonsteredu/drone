@@ -3,6 +3,7 @@ import {
   createWaitingDiagnostics,
   type AdapterMatch,
   type ControllerAdapter,
+  type ControllerButtonTransition,
   type ControllerDiagnostics,
   type ControllerState,
   type DetectionContext,
@@ -16,6 +17,9 @@ export interface GamepadRawSnapshot {
   timestamp: number;
   axes: number[];
   buttons: Array<{ pressed: boolean; touched: boolean; value: number }>;
+  axisChangedEver: boolean;
+  buttonChangedEver: boolean;
+  lastPressedButtonNumber: number | null;
 }
 
 export class GamepadControllerAdapter implements ControllerAdapter {
@@ -28,6 +32,12 @@ export class GamepadControllerAdapter implements ControllerAdapter {
   private raw: GamepadRawSnapshot | null = null;
   private previousAxes: number[] | null = null;
   private previousButtons: boolean[] | null = null;
+  private axisChangedEver = false;
+  private buttonChangedEver = false;
+  private lastPressedButtonNumber: number | null = null;
+  private buttonTransitions: ControllerButtonTransition[] = [];
+  private buttonTransitionSequence = 0;
+  private buttonObservationSequence = 0;
 
   constructor(readonly gamepadIndex: number) {
     this.id = `gamepad-${gamepadIndex}`;
@@ -57,18 +67,40 @@ export class GamepadControllerAdapter implements ControllerAdapter {
   }
 
   update(gamepad: Gamepad): void {
+    const updatedAt = Date.now();
     const axes = Array.from(gamepad.axes);
     const buttonStates = gamepad.buttons.map((button) => button.pressed);
-    const changed =
+    const axisChanged =
       this.previousAxes !== null &&
-      (axes.some(
+      axes.some(
         (value, index) =>
           Math.abs(value - (this.previousAxes?.[index] ?? value)) > 0.02,
-      ) ||
-        buttonStates.some(
+      );
+    const buttonChanged =
+      this.previousButtons !== null &&
+      buttonStates.some(
           (pressed, index) =>
             pressed !== (this.previousButtons?.[index] ?? pressed),
-        ));
+        );
+    this.axisChangedEver ||= axisChanged;
+    this.buttonChangedEver ||= buttonChanged;
+    const observationSequence = buttonChanged
+      ? ++this.buttonObservationSequence
+      : this.buttonObservationSequence;
+    buttonStates.forEach((pressed, index) => {
+      const previous = this.previousButtons?.[index];
+      if (previous === undefined || previous === pressed) return;
+      if (pressed) this.lastPressedButtonNumber = index + 1;
+      this.buttonTransitions.push({
+        sequence: ++this.buttonTransitionSequence,
+        observationSequence,
+        buttonId: `button_${index + 1}`,
+        buttonNumber: index + 1,
+        phase: pressed ? "down" : "up",
+        at: updatedAt,
+      });
+    });
+    this.buttonTransitions = this.buttonTransitions.slice(-128);
 
     this.raw = {
       id: gamepad.id,
@@ -81,6 +113,9 @@ export class GamepadControllerAdapter implements ControllerAdapter {
         touched: button.touched,
         value: button.value,
       })),
+      axisChangedEver: this.axisChangedEver,
+      buttonChangedEver: this.buttonChangedEver,
+      lastPressedButtonNumber: this.lastPressedButtonNumber,
     };
     this.state = {
       ...createUnidentifiedState(true),
@@ -91,14 +126,15 @@ export class GamepadControllerAdapter implements ControllerAdapter {
       buttons: Object.fromEntries(
         buttonStates.map((pressed, index) => [`button_${index + 1}`, pressed]),
       ),
-      updatedAt: Date.now(),
+      buttonTransitions: this.buttonTransitions.map((entry) => ({ ...entry })),
+      updatedAt,
     };
     this.diagnostics = {
       deviceDetected: { status: "pass", detail: "Gamepad 장치 감지" },
       transportOpen: { status: "not_applicable", detail: "해당 없음" },
       dataReceived: { status: "pass", detail: "Gamepad snapshot 수신" },
       packetParsed: { status: "not_applicable", detail: "해당 없음" },
-      inputActive: changed
+      inputActive: this.axisChangedEver || this.buttonChangedEver
         ? { status: "pass", detail: "축 또는 버튼 변화 확인" }
         : this.diagnostics.inputActive.status === "pass"
           ? this.diagnostics.inputActive
@@ -114,6 +150,12 @@ export class GamepadControllerAdapter implements ControllerAdapter {
     this.raw = null;
     this.previousAxes = null;
     this.previousButtons = null;
+    this.axisChangedEver = false;
+    this.buttonChangedEver = false;
+    this.lastPressedButtonNumber = null;
+    this.buttonTransitions = [];
+    this.buttonTransitionSequence = 0;
+    this.buttonObservationSequence = 0;
   }
 
   getState(): ControllerState {

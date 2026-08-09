@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "배틀드론 조종기 테스트",
-  description: "USB 게임패드의 스틱 축과 버튼 입력을 실시간으로 확인하는 배틀드론 진단 도구",
+  title: "BYROBOT Controller Diagnostics",
+  description:
+    "Gamepad와 Web Serial로 바이로봇 USB 조종기의 연결, RAW 데이터, 패킷, 입력 상태를 단계별로 진단합니다.",
 };
 
 export default function RootLayout({

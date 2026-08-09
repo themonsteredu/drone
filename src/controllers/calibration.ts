@@ -1,4 +1,7 @@
-import { normalizeControllerValue } from "./types";
+import {
+  normalizeControllerValue,
+  type ControllerState,
+} from "./types";
 
 export type SemanticControl = "throttle" | "yaw" | "pitch" | "roll";
 
@@ -96,4 +99,58 @@ export function resetAxisCalibrations(axisCount: number): AxisCalibration[] {
   return Array.from({ length: axisCount }, (_, index) =>
     createAxisCalibration(index),
   );
+}
+
+/**
+ * Projects adapter raw axes through the user-owned calibration profile. Until
+ * all four semantic controls are assigned and normalized, their values remain
+ * null and the state is explicitly unidentified.
+ */
+export function projectMappedControllerState(
+  source: ControllerState,
+  calibrations: AxisCalibration[],
+): ControllerState {
+  const values: Record<SemanticControl, number | null> = {
+    throttle: null,
+    yaw: null,
+    pitch: null,
+    roll: null,
+  };
+
+  for (const axis of calibrations) {
+    if (axis.assignedControl && axis.normalizedValue !== null) {
+      values[axis.assignedControl] = axis.normalizedValue;
+    }
+  }
+
+  if (
+    values.throttle !== null &&
+    values.yaw !== null &&
+    values.pitch !== null &&
+    values.roll !== null
+  ) {
+    return {
+      ...source,
+      mappingStatus: "mapped",
+      throttle: values.throttle,
+      yaw: values.yaw,
+      pitch: values.pitch,
+      roll: values.roll,
+      buttons: { ...source.buttons },
+      rawAxes: source.rawAxes ? [...source.rawAxes] : [],
+      rawButtons: source.rawButtons ? [...source.rawButtons] : [],
+    };
+  }
+
+  return {
+    ...source,
+    mappingStatus: "unidentified",
+    throttle: null,
+    yaw: null,
+    pitch: null,
+    roll: null,
+    buttons: { ...source.buttons },
+    rawAxes: source.rawAxes ? [...source.rawAxes] : [],
+    rawButtons: source.rawButtons ? [...source.rawButtons] : [],
+  };
 }

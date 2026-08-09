@@ -7,8 +7,27 @@ import {
   DataChangeDetector,
   type ChangeSnapshot,
 } from "../diagnostics/change-detector";
+import {
+  ByrobotDataTypeMonitor,
+  type DataTypeWindowEntry,
+} from "../diagnostics/data-type-monitor";
+import {
+  BYROBOT_DATA_TYPE_BUTTON,
+  BYROBOT_DATA_TYPE_JOYSTICK,
+  ByrobotControllerInputTracker,
+  CODING_E_DRONE_CONTROLLER_INPUT_CODEC,
+  RAW_ONLY_CONTROLLER_INPUT_CODEC,
+  isByrobotControllerInputActive,
+  type ByrobotControllerInputCodec,
+  type ByrobotControllerInputSnapshot,
+  type ByrobotButtonInput,
+  type ByrobotInputEvidence,
+} from "../protocols/byrobot/controller-input";
 import { ByrobotPacketParser } from "../protocols/byrobot/parser";
-import { buildControllerInputActivationPing } from "../protocols/byrobot/packet";
+import {
+  buildControllerDataRequest,
+  buildControllerInputActivationPing,
+} from "../protocols/byrobot/packet";
 import {
   BYROBOT_START_CODE,
   DEVICE_ADDRESSED_PROFILE,
@@ -39,7 +58,22 @@ interface ThroughputSample {
   bytes: number;
 }
 
+export interface ControllerInputAcquisitionSnapshot {
+  mode: "passive-after-ping" | "request-polling";
+  polling: boolean;
+  pollingIntervalMs: number | null;
+  requestCount: number;
+  joystickRequestCount: number;
+  buttonRequestCount: number;
+  inputPacketsAfterFirstRequest: number;
+  lastRequestAt: number | null;
+  lastRequestedDataType: number | null;
+  requestRecommended: boolean;
+}
+
 export interface ByrobotSerialSnapshot {
+  adapterId: string;
+  adapterName: string;
   isOpen: boolean;
   openedAt: number | null;
   baudRate: number;
@@ -60,6 +94,10 @@ export interface ByrobotSerialSnapshot {
   errors: ControllerError[];
   lastWriteAt: number | null;
   activationPingCount: number;
+  activationPingLastAt: number | null;
+  dataTypeStats: DataTypeWindowEntry[];
+  controllerInput: ByrobotControllerInputSnapshot;
+  inputAcquisition: ControllerInputAcquisitionSnapshot;
 }
 
 type Listener = () => void;
@@ -75,6 +113,8 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
 
   private readonly connection: SerialConnection;
   private readonly detector = new DataChangeDetector();
+  private readonly dataTypeMonitor = new ByrobotDataTypeMonitor();
+  private readonly inputTracker: ByrobotControllerInputTracker;
   private readonly listeners = new Set<Listener>();
   private rawEntries: RawSerialEntry[] = [];
   private throughput: ThroughputSample[] = [];
@@ -91,6 +131,20 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   private openedAt: number | null = null;
   private lastWriteAt: number | null = null;
   private activationPingCount = 0;
+  private activationPingLastAt: number | null = null;
+  private inputRequestCount = 0;
+  private joystickRequestCount = 0;
+  private buttonRequestCount = 0;
+  private inputPacketsAfterFirstRequest = 0;
+  private lastRequestAt: number | null = null;
+  private lastRequestedDataType: number | null = null;
+  private inputPollingTimer: ReturnType<typeof setTimeout> | null = null;
+  private inputPollingIntervalMs: number | null = null;
+  private inputPollingCursor = 0;
+  private inputPollingGeneration = 0;
+  private writeQueue: Promise<void> = Promise.resolve();
+  private sessionGeneration = 0;
+  private buttonPressedState = Array.from({ length: 16 }, () => false);
   private startCodeSeen = false;
   private previousByte: number | null = null;
   private logPaused = false;
@@ -100,15 +154,24 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     readonly baudRate: number,
     readonly id = "byrobot-serial-generic",
     readonly name = "Generic BYROBOT Serial",
+    inputCodec: ByrobotControllerInputCodec =
+      RAW_ONLY_CONTROLLER_INPUT_CODEC,
   ) {
+    this.inputTracker = new ByrobotControllerInputTracker(inputCodec);
     this.connection = new SerialConnection(port, {
       onBytes: (bytes, receivedAt) => this.handleBytes(bytes, receivedAt),
       onError: (error) => this.addError(error),
       onUnexpectedClose: () => {
+        this.stopInputRequestPolling(false);
+        this.sessionGeneration += 1;
         this.state = { ...this.state, connected: false };
         this.diagnostics.transportOpen = {
           status: "fail",
           detail: "포트 연결이 예기치 않게 종료됨",
+        };
+        this.diagnostics.inputActive = {
+          status: "fail",
+          detail: "포트 종료로 입력 검증 중단",
         };
         this.emit();
       },
@@ -184,7 +247,7 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
       };
       this.diagnostics.inputActive = {
         status: "waiting",
-        detail: "검증된 제품 adapter 대기",
+        detail: "0x71 stick 변화와 0x70 button 입력 대기",
       };
       this.emit();
     } catch (error) {
@@ -199,9 +262,16 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   }
 
   async disconnect(): Promise<void> {
+    this.stopInputRequestPolling(false);
+    this.sessionGeneration += 1;
+    await this.writeQueue.catch(() => undefined);
     await this.connection.close();
     this.state = { ...this.state, connected: false };
     this.diagnostics.transportOpen = {
+      status: "idle",
+      detail: "연결 해제됨",
+    };
+    this.diagnostics.inputActive = {
       status: "idle",
       detail: "연결 해제됨",
     };
@@ -210,17 +280,96 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
 
   async sendInputActivationPing(): Promise<Uint8Array> {
     const ping = buildControllerInputActivationPing();
+    const generation = this.sessionGeneration;
     try {
-      await this.connection.write(ping);
+      await this.enqueueWrite(ping);
+      if (generation !== this.sessionGeneration) {
+        throw controllerError("port_unavailable");
+      }
       this.activationPingCount += 1;
-      this.lastWriteAt = Date.now();
+      this.activationPingLastAt = Date.now();
+      this.lastWriteAt = this.activationPingLastAt;
       this.emit();
       return ping;
     } catch (error) {
       const normalized = this.asControllerError(error);
-      this.addError(normalized);
+      if (generation === this.sessionGeneration) this.addError(normalized);
       throw normalized;
     }
+  }
+
+  async requestControllerInputOnce(): Promise<Uint8Array[]> {
+    const frames: Uint8Array[] = [];
+    const dataTypes = this.getInputRequestDataTypes();
+    if (dataTypes.length === 0) throw controllerError("adapter_unavailable");
+    for (const dataType of dataTypes) {
+      frames.push(await this.sendControllerDataRequest(dataType));
+    }
+    return frames;
+  }
+
+  startInputRequestPolling(intervalMs = 250): void {
+    if (!this.connection.isOpen) {
+      throw controllerError("port_unavailable");
+    }
+    if (!Number.isFinite(intervalMs) || intervalMs < 100 || intervalMs > 5_000) {
+      throw new RangeError("Request polling interval must be 100…5000 ms.");
+    }
+    if (this.getInputRequestDataTypes().length === 0) {
+      throw controllerError("adapter_unavailable");
+    }
+    this.stopInputRequestPolling(false);
+    this.inputPollingIntervalMs = Math.round(intervalMs);
+    this.inputPollingCursor = 0;
+    const generation = this.sessionGeneration;
+    const pollingGeneration = this.inputPollingGeneration;
+
+    const poll = async () => {
+      if (
+        this.inputPollingIntervalMs === null ||
+        generation !== this.sessionGeneration ||
+        pollingGeneration !== this.inputPollingGeneration ||
+        !this.connection.isOpen
+      ) {
+        return;
+      }
+      const dataTypes = this.getInputRequestDataTypes();
+      const dataType = dataTypes[this.inputPollingCursor % dataTypes.length];
+      this.inputPollingCursor += 1;
+      try {
+        await this.sendControllerDataRequest(dataType);
+      } catch (error) {
+        if (
+          generation === this.sessionGeneration &&
+          pollingGeneration === this.inputPollingGeneration
+        ) {
+          this.addError(this.asControllerError(error));
+          this.stopInputRequestPolling();
+        }
+        return;
+      }
+      if (
+        this.inputPollingIntervalMs !== null &&
+        generation === this.sessionGeneration &&
+        pollingGeneration === this.inputPollingGeneration
+      ) {
+        this.inputPollingTimer = setTimeout(
+          () => void poll(),
+          this.inputPollingIntervalMs,
+        );
+      }
+    };
+
+    this.inputPollingTimer = setTimeout(() => void poll(), 0);
+    this.emit();
+  }
+
+  stopInputRequestPolling(notify = true): void {
+    this.inputPollingGeneration += 1;
+    if (this.inputPollingTimer) clearTimeout(this.inputPollingTimer);
+    this.inputPollingTimer = null;
+    this.inputPollingIntervalMs = null;
+    if (notify) this.emit();
   }
 
   setLogPaused(paused: boolean): void {
@@ -252,7 +401,10 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
 
   getSnapshot(now = Date.now()): ByrobotSerialSnapshot {
     const recent = this.throughput.filter((sample) => now - sample.at <= 1_000);
+    const controllerInput = this.inputTracker.snapshot();
     return {
+      adapterId: this.id,
+      adapterName: this.name,
       isOpen: this.connection.isOpen,
       openedAt: this.openedAt,
       baudRate: this.baudRate,
@@ -273,6 +425,29 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
       errors: [...this.errors],
       lastWriteAt: this.lastWriteAt,
       activationPingCount: this.activationPingCount,
+      activationPingLastAt: this.activationPingLastAt,
+      dataTypeStats: this.dataTypeMonitor.snapshot(now),
+      controllerInput,
+      inputAcquisition: {
+        mode:
+          this.inputPollingIntervalMs === null
+            ? "passive-after-ping"
+            : "request-polling",
+        polling: this.inputPollingIntervalMs !== null,
+        pollingIntervalMs: this.inputPollingIntervalMs,
+        requestCount: this.inputRequestCount,
+        joystickRequestCount: this.joystickRequestCount,
+        buttonRequestCount: this.buttonRequestCount,
+        inputPacketsAfterFirstRequest: this.inputPacketsAfterFirstRequest,
+        lastRequestAt: this.lastRequestAt,
+        lastRequestedDataType: this.lastRequestedDataType,
+        requestRecommended: Boolean(
+          this.connection.isOpen &&
+            this.activationPingLastAt &&
+            now - this.activationPingLastAt >= 2_000 &&
+            !controllerInput.evidence.joystickSeen,
+        ),
+      },
     };
   }
 
@@ -293,7 +468,11 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     ) {
       warnings.push(controllerError("baud_mismatch_suspected"));
     }
-    if (this.packetCount > 0 && this.state.mappingStatus === "unidentified") {
+    const evidence = this.inputTracker.snapshot().evidence;
+    if (
+      (evidence.joystickSeen && !evidence.joystickDecoded) ||
+      (evidence.buttonSeen && !evidence.buttonDecoded)
+    ) {
       warnings.push(controllerError("adapter_unavailable"));
     }
     return warnings;
@@ -303,6 +482,16 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     // Product adapters must only implement this after their payload is verified.
     void packet;
     return null;
+  }
+
+  /** Product adapters can override the request list or disable polling. */
+  protected getInputRequestDataTypes(): readonly number[] {
+    return [];
+  }
+
+  /** Product adapters can define a different evidence policy if documented. */
+  protected isControllerInputActive(evidence: ByrobotInputEvidence): boolean {
+    return isByrobotControllerInputActive(evidence);
   }
 
   private handleBytes(bytes: Uint8Array, receivedAt: number): void {
@@ -357,6 +546,8 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
       this.latestPacket = packet;
       this.packetCount += 1;
       this.detector.observePacket(packet);
+      this.dataTypeMonitor.observe(packet);
+      this.handleControllerInputPacket(packet);
       const mapped = this.mapPacket(packet);
       if (mapped) this.state = mapped;
     }
@@ -388,9 +579,130 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     this.emit();
   }
 
+  private handleControllerInputPacket(packet: ByrobotPacket): void {
+    if (
+      packet.dataType !== BYROBOT_DATA_TYPE_JOYSTICK &&
+      packet.dataType !== BYROBOT_DATA_TYPE_BUTTON
+    ) {
+      return;
+    }
+
+    if (this.inputRequestCount > 0) this.inputPacketsAfterFirstRequest += 1;
+    this.inputTracker.observe(packet);
+    const input = this.inputTracker.snapshot();
+
+    if (
+      packet.dataType === BYROBOT_DATA_TYPE_JOYSTICK &&
+      input.latestJoystick &&
+      input.joystickUnsupportedReason === null
+    ) {
+      const { left, right } = input.latestJoystick;
+      this.state = {
+        ...this.state,
+        rawAxes: [left.x / 100, left.y / 100, right.x / 100, right.y / 100],
+      };
+    }
+
+    if (
+      packet.dataType === BYROBOT_DATA_TYPE_BUTTON &&
+      input.latestButton &&
+      input.buttonUnsupportedReason === null
+    ) {
+      this.applyButtonState(input.latestButton);
+    }
+
+    const evidence = input.evidence;
+    if (this.isControllerInputActive(evidence)) {
+      this.diagnostics.inputActive = {
+        status: "pass",
+        detail: "0x71 stick 변화 + 0x70 button 상호작용 확인",
+      };
+    } else {
+      const progress = [
+        evidence.joystickDecoded
+          ? evidence.joystickChangedEver
+            ? "Joystick change PASS"
+            : "Joystick move WAITING"
+          : "0x71 WAITING",
+        evidence.buttonDecoded
+          ? evidence.buttonInteractionEver && evidence.buttonChangedEver
+            ? "Button change PASS"
+            : "Button press/change WAITING"
+          : "0x70 WAITING",
+      ];
+      this.diagnostics.inputActive = {
+        status: "waiting",
+        detail: progress.join(" · "),
+      };
+    }
+  }
+
+  private applyButtonState(input: ByrobotButtonInput): void {
+    for (let index = 0; index < 16; index += 1) {
+      const included = (input.button & (1 << index)) !== 0;
+      if (!included) continue;
+      if (input.event === 1 || input.event === 2) {
+        this.buttonPressedState[index] = true;
+      } else if (input.event === 3) {
+        this.buttonPressedState[index] = false;
+      }
+    }
+    this.state = {
+      ...this.state,
+      rawButtons: Array.from({ length: 16 }, (_, index) =>
+        (input.button & (1 << index)) !== 0 ? 1 : 0,
+      ),
+      buttons: Object.fromEntries(
+        this.buttonPressedState.map((pressed, index) => [
+          `button_bit_${index}`,
+          pressed,
+        ]),
+      ),
+    };
+  }
+
+  private async sendControllerDataRequest(dataType: number): Promise<Uint8Array> {
+    if (!this.getInputRequestDataTypes().includes(dataType)) {
+      throw new RangeError(
+        `DataType 0x${dataType.toString(16).toUpperCase()} is not enabled by this adapter request policy.`,
+      );
+    }
+    const frame = buildControllerDataRequest(dataType);
+    const generation = this.sessionGeneration;
+    await this.enqueueWrite(frame);
+    if (generation !== this.sessionGeneration) {
+      throw controllerError("port_unavailable");
+    }
+    const now = Date.now();
+    this.inputRequestCount += 1;
+    if (dataType === BYROBOT_DATA_TYPE_JOYSTICK) this.joystickRequestCount += 1;
+    if (dataType === BYROBOT_DATA_TYPE_BUTTON) this.buttonRequestCount += 1;
+    this.lastRequestedDataType = dataType;
+    this.lastRequestAt = now;
+    this.lastWriteAt = now;
+    this.emit();
+    return frame;
+  }
+
+  private enqueueWrite(frame: Uint8Array): Promise<void> {
+    const generation = this.sessionGeneration;
+    const pending = this.writeQueue.then(async () => {
+      if (generation !== this.sessionGeneration || !this.connection.isOpen) {
+        throw controllerError("port_unavailable");
+      }
+      await this.connection.write(frame);
+    });
+    this.writeQueue = pending.catch(() => undefined);
+    return pending;
+  }
+
   private resetSession(): void {
+    this.stopInputRequestPolling(false);
+    this.sessionGeneration += 1;
     this.parser.reset();
     this.detector.reset();
+    this.dataTypeMonitor.reset();
+    this.inputTracker.reset();
     this.state = createUnidentifiedState(false);
     this.diagnostics = createWaitingDiagnostics("serial");
     this.rawEntries = [];
@@ -408,6 +720,16 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     this.openedAt = null;
     this.lastWriteAt = null;
     this.activationPingCount = 0;
+    this.activationPingLastAt = null;
+    this.inputRequestCount = 0;
+    this.joystickRequestCount = 0;
+    this.buttonRequestCount = 0;
+    this.inputPacketsAfterFirstRequest = 0;
+    this.lastRequestAt = null;
+    this.lastRequestedDataType = null;
+    this.inputPollingCursor = 0;
+    this.writeQueue = Promise.resolve();
+    this.buttonPressedState = Array.from({ length: 16 }, () => false);
     this.startCodeSeen = false;
     this.previousByte = null;
   }
@@ -436,4 +758,23 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   }
 }
 
-export class GenericByrobotSerialAdapter extends ByrobotSerialBaseAdapter {}
+/**
+ * Diagnostics-only candidate for the official Coding/E-Drone input profile.
+ * It never confirms a product model; exact address, length, CRC, and axis range
+ * still have to match before raw controller state is exposed.
+ */
+export class GenericByrobotSerialAdapter extends ByrobotSerialBaseAdapter {
+  constructor(port: BrowserSerialPort, baudRate: number) {
+    super(
+      port,
+      baudRate,
+      "byrobot-serial-generic-coding-e-candidate",
+      "Generic BYROBOT Serial · Coding/E input profile candidate",
+      CODING_E_DRONE_CONTROLLER_INPUT_CODEC,
+    );
+  }
+
+  protected override getInputRequestDataTypes(): readonly number[] {
+    return [BYROBOT_DATA_TYPE_JOYSTICK, BYROBOT_DATA_TYPE_BUTTON];
+  }
+}

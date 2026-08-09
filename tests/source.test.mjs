@@ -20,6 +20,11 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(component, /Serial 장치 선택/);
   assert.match(component, /BYROBOT 입력 활성화/);
   assert.match(component, /RAW SERIAL MONITOR/);
+  assert.match(component, /DATA TYPE MONITOR/);
+  assert.match(component, /BYROBOT CONTROLLER INPUT/);
+  assert.match(component, /0x71 \/ 0x70 Request 1회/);
+  assert.match(component, /Left X/);
+  assert.match(component, /Right Y/);
   assert.match(component, /Controller input mapping not identified yet/);
 });
 
@@ -35,6 +40,8 @@ test("contains the requested adapter and protocol module boundaries", async () =
     "../src/controllers/protocols/byrobot/parser.ts",
     "../src/controllers/protocols/byrobot/crc16.ts",
     "../src/controllers/protocols/byrobot/types.ts",
+    "../src/controllers/protocols/byrobot/controller-input.ts",
+    "../src/controllers/diagnostics/data-type-monitor.ts",
   ];
 
   await Promise.all(files.map((file) => readFile(new URL(file, import.meta.url), "utf8")));

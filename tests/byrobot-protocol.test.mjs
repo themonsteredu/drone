@@ -42,14 +42,45 @@ const parserModule = loadTypeScriptModule(
 const packetModule = loadTypeScriptModule(
   new URL("../src/controllers/protocols/byrobot/packet.ts", import.meta.url),
 );
+const inputModule = loadTypeScriptModule(
+  new URL(
+    "../src/controllers/protocols/byrobot/controller-input.ts",
+    import.meta.url,
+  ),
+);
+const dataTypeMonitorModule = loadTypeScriptModule(
+  new URL(
+    "../src/controllers/diagnostics/data-type-monitor.ts",
+    import.meta.url,
+  ),
+);
+const calibrationModule = loadTypeScriptModule(
+  new URL("../src/controllers/calibration.ts", import.meta.url),
+);
+const controllerTypesModule = loadTypeScriptModule(
+  new URL("../src/controllers/types.ts", import.meta.url),
+);
 const typesModule = loadTypeScriptModule(
   new URL("../src/controllers/protocols/byrobot/types.ts", import.meta.url),
 );
 
 const { crc16Byrobot } = crcModule;
 const { ByrobotPacketParser } = parserModule;
-const { buildControllerInputActivationPing, buildDeviceAddressedPacket } =
-  packetModule;
+const {
+  buildControllerDataRequest,
+  buildControllerInputActivationPing,
+  buildDeviceAddressedPacket,
+} = packetModule;
+const {
+  ByrobotControllerInputTracker,
+  RAW_ONLY_CONTROLLER_INPUT_CODEC,
+  decodeOfficialButtonPacket,
+  decodeOfficialJoystickPacket,
+  isByrobotControllerInputActive,
+} = inputModule;
+const { ByrobotDataTypeMonitor } = dataTypeMonitorModule;
+const { projectMappedControllerState } = calibrationModule;
+const { createUnidentifiedState } = controllerTypesModule;
 const { LEGACY_LINK_PROFILE } = typesModule;
 
 function concatenate(...arrays) {
@@ -67,6 +98,21 @@ test("builds the reviewed Base-to-Controller input activation Ping", () => {
       byte.toString(16).padStart(2, "0"),
     ).join(" "),
     "0a 55 01 08 70 20 00 00 00 00 00 00 00 00 86 d9",
+  );
+});
+
+test("builds official one-byte Controller Request frames for Joystick and Button", () => {
+  assert.equal(
+    Array.from(buildControllerDataRequest(0x71), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join(" "),
+    "0a 55 04 01 70 20 71 ea 4f",
+  );
+  assert.equal(
+    Array.from(buildControllerDataRequest(0x70), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join(" "),
+    "0a 55 04 01 70 20 70 cb 5f",
   );
 });
 
@@ -174,4 +220,217 @@ test("caps an untrusted stream buffer", () => {
   const result = parser.feed(new Uint8Array(70_000));
   assert.ok(result.issues.some((issue) => issue.code === "buffer_overflow"));
   assert.ok(parser.bufferedBytes <= 1);
+});
+
+test("decodes the official 8-byte signed Joystick layout without semantic mapping", () => {
+  const parser = new ByrobotPacketParser();
+  const frame = buildDeviceAddressedPacket(
+    0x71,
+    0x20,
+    0x70,
+    Uint8Array.of(0x9c, 0x64, 0x11, 0x01, 0x32, 0xce, 0x22, 0x02),
+  );
+  const packet = parser.feed(frame, 555).packets[0];
+  const result = decodeOfficialJoystickPacket(packet);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.ok
+      ? [
+          result.value.left.x,
+          result.value.left.y,
+          result.value.right.x,
+          result.value.right.y,
+        ]
+      : [],
+    [-100, 100, 50, -50],
+  );
+  assert.equal(result.ok && result.value.left.directionName, "TL");
+  assert.equal(result.ok && result.value.right.eventName, "STAY");
+  assert.equal(result.ok && result.value.axesWithinDocumentedRange, true);
+});
+
+test("rejects 0x71 layouts whose payload length is not the official 8 bytes", () => {
+  const parser = new ByrobotPacketParser();
+  const packet = parser.feed(
+    buildDeviceAddressedPacket(0x71, 0x20, 0x70, new Uint8Array(10)),
+  ).packets[0];
+  const result = decodeOfficialJoystickPacket(packet);
+
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /unsupported payload length 10/);
+});
+
+test("rejects controller input DataTypes from the wrong device address", () => {
+  const parser = new ByrobotPacketParser();
+  const wrongSource = parser.feed(
+    buildDeviceAddressedPacket(
+      0x71,
+      0x10,
+      0x70,
+      Uint8Array.of(0, 0, 0x22, 2, 0, 0, 0x22, 2),
+    ),
+  ).packets[0];
+  const wrongTarget = parser.feed(
+    buildDeviceAddressedPacket(0x70, 0x20, 0x10, Uint8Array.of(1, 0, 1)),
+  ).packets[0];
+
+  const joystick = decodeOfficialJoystickPacket(wrongSource);
+  const button = decodeOfficialButtonPacket(wrongTarget);
+  assert.equal(joystick.ok, false);
+  assert.match(joystick.reason, /source\/target mismatch/);
+  assert.equal(button.ok, false);
+  assert.match(button.reason, /source\/target mismatch/);
+});
+
+test("keeps unverified product adapters on a raw-only input codec", () => {
+  const parser = new ByrobotPacketParser();
+  const tracker = new ByrobotControllerInputTracker(
+    RAW_ONLY_CONTROLLER_INPUT_CODEC,
+  );
+  const packet = parser.feed(
+    buildDeviceAddressedPacket(
+      0x71,
+      0x20,
+      0x70,
+      Uint8Array.of(0, 0, 0x22, 2, 0, 0, 0x22, 2),
+    ),
+  ).packets[0];
+  tracker.observe(packet);
+
+  const snapshot = tracker.snapshot();
+  assert.equal(snapshot.evidence.joystickSeen, true);
+  assert.equal(snapshot.evidence.joystickDecoded, false);
+  assert.match(snapshot.joystickUnsupportedReason, /no verified controller input codec/);
+});
+
+test("does not treat an out-of-range sample as a valid movement baseline", () => {
+  const parser = new ByrobotPacketParser();
+  const tracker = new ByrobotControllerInputTracker();
+  const packet = (x, at) =>
+    parser.feed(
+      buildDeviceAddressedPacket(
+        0x71,
+        0x20,
+        0x70,
+        Uint8Array.of(x, 0, 0x22, 2, 0, 0, 0x22, 2),
+      ),
+      at,
+    ).packets[0];
+
+  tracker.observe(packet(127, 1));
+  assert.equal(tracker.snapshot().evidence.joystickDecoded, false);
+  tracker.observe(packet(0, 2));
+  assert.equal(tracker.snapshot().evidence.joystickChangedEver, false);
+  tracker.observe(packet(10, 3));
+  assert.equal(tracker.snapshot().evidence.joystickChangedEver, true);
+});
+
+test("decodes Button uint16 little-endian, event, and session input evidence", () => {
+  const parser = new ByrobotPacketParser();
+  const tracker = new ByrobotControllerInputTracker();
+  const neutral = parser.feed(
+    buildDeviceAddressedPacket(
+      0x71,
+      0x20,
+      0x70,
+      Uint8Array.of(0, 0, 0x22, 2, 0, 0, 0x22, 2),
+    ),
+    1,
+  ).packets[0];
+  const moved = parser.feed(
+    buildDeviceAddressedPacket(
+      0x71,
+      0x20,
+      0x70,
+      Uint8Array.of(25, 0, 0x24, 1, 0, 0, 0x22, 2),
+    ),
+    2,
+  ).packets[0];
+  const buttonPacket = parser.feed(
+    buildDeviceAddressedPacket(0x70, 0x20, 0x70, Uint8Array.of(0x04, 0x01, 1)),
+    3,
+  ).packets[0];
+  const buttonReleasePacket = parser.feed(
+    buildDeviceAddressedPacket(0x70, 0x20, 0x70, Uint8Array.of(0x04, 0x01, 3)),
+    4,
+  ).packets[0];
+
+  const decodedButton = decodeOfficialButtonPacket(buttonPacket);
+  assert.equal(decodedButton.ok, true);
+  assert.equal(decodedButton.ok && decodedButton.value.button, 0x0104);
+  assert.equal(decodedButton.ok && decodedButton.value.eventName, "DOWN");
+
+  tracker.observe(neutral);
+  assert.equal(tracker.snapshot().evidence.joystickChangedEver, false);
+  tracker.observe(moved);
+  assert.equal(tracker.snapshot().evidence.joystickChangedEver, true);
+  assert.equal(isByrobotControllerInputActive(tracker.snapshot().evidence), false);
+  tracker.observe(buttonPacket);
+  let evidence = tracker.snapshot().evidence;
+  assert.equal(evidence.buttonDecoded, true);
+  assert.equal(evidence.buttonInteractionEver, true);
+  assert.equal(evidence.buttonChangedEver, false);
+  assert.equal(isByrobotControllerInputActive(evidence), false);
+  tracker.observe(buttonReleasePacket);
+  evidence = tracker.snapshot().evidence;
+  assert.equal(evidence.buttonChangedEver, true);
+  assert.equal(isByrobotControllerInputActive(evidence), true);
+});
+
+test("counts every valid DataType in a rolling five-second window", () => {
+  const parser = new ByrobotPacketParser();
+  const monitor = new ByrobotDataTypeMonitor();
+  const packet = (dataType, payload, at) =>
+    parser.feed(
+      buildDeviceAddressedPacket(dataType, 0x20, 0x70, Uint8Array.from(payload)),
+      at,
+    ).packets[0];
+
+  monitor.observe(packet(0x02, [1], 1_000));
+  monitor.observe(packet(0x71, [0, 0, 0x22, 2, 0, 0, 0x22, 2], 2_000));
+  monitor.observe(packet(0x71, [10, 0, 0x24, 1, 0, 0, 0x22, 2], 3_000));
+
+  const atThreeSeconds = monitor.snapshot(3_000);
+  const joystick = atThreeSeconds.find((entry) => entry.dataType === 0x71);
+  assert.equal(joystick.packetCount5s, 2);
+  assert.equal(joystick.totalCount, 2);
+  assert.equal(joystick.payloadChange5s, "yes");
+  assert.deepEqual(joystick.changedByteIndices, [0, 2, 3]);
+
+  const expired = monitor.snapshot(8_001);
+  assert.equal(expired.find((entry) => entry.dataType === 0x71).packetCount5s, 0);
+  assert.equal(expired.find((entry) => entry.dataType === 0x71).totalCount, 2);
+  assert.equal(expired.find((entry) => entry.dataType === 0x70).packetCount5s, 0);
+});
+
+test("projects calibrated raw axes into a real mapped Common ControllerState", () => {
+  const source = {
+    ...createUnidentifiedState(true),
+    rawAxes: [0.25, -0.5, 0.75, -1],
+    controllerModel: "Unknown BYROBOT Controller",
+  };
+  const controls = ["yaw", "throttle", "roll", "pitch"];
+  const calibrations = source.rawAxes.map((rawCurrent, index) => ({
+    index,
+    rawCurrent,
+    observedMinimum: -1,
+    observedMaximum: 1,
+    center: 0,
+    normalizedValue: rawCurrent,
+    inverted: false,
+    deadZone: 0,
+    assignedControl: controls[index],
+  }));
+
+  const mapped = projectMappedControllerState(source, calibrations);
+  assert.equal(mapped.mappingStatus, "mapped");
+  assert.equal(mapped.yaw, 0.25);
+  assert.equal(mapped.throttle, -0.5);
+  assert.equal(mapped.roll, 0.75);
+  assert.equal(mapped.pitch, -1);
+
+  const incomplete = projectMappedControllerState(source, calibrations.slice(0, 3));
+  assert.equal(incomplete.mappingStatus, "unidentified");
+  assert.equal(incomplete.throttle, null);
 });

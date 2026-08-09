@@ -3,12 +3,17 @@ import type {
   ControllerAdapter,
   DetectionContext,
   DeviceInfo,
+  ControllerState,
 } from "./types";
 
 export interface RankedAdapter {
   adapter: ControllerAdapter;
   match: AdapterMatch;
 }
+
+export type ControllerStateProjector = (
+  state: ControllerState,
+) => ControllerState;
 
 /**
  * Keeps input adapters independent from simulator/UI consumers. Candidate
@@ -17,6 +22,7 @@ export interface RankedAdapter {
 export class ControllerManager {
   private readonly adapters = new Map<string, ControllerAdapter>();
   private activeAdapterId: string | null = null;
+  private stateProjector: ControllerStateProjector | null = null;
 
   register(adapter: ControllerAdapter): void {
     this.adapters.set(adapter.id, adapter);
@@ -40,6 +46,17 @@ export class ControllerManager {
       : null;
   }
 
+  setStateProjector(projector: ControllerStateProjector | null): void {
+    this.stateProjector = projector;
+  }
+
+  /** Stable UI/simulator boundary for the projected Common ControllerState. */
+  getState(adapter = this.getActive()): ControllerState | null {
+    if (!adapter) return null;
+    const state = adapter.getState();
+    return this.stateProjector ? this.stateProjector(state) : state;
+  }
+
   getAdapters(): ControllerAdapter[] {
     return [...this.adapters.values()];
   }
@@ -57,7 +74,15 @@ export class ControllerManager {
       .sort((left, right) => right.match.score - left.match.score);
   }
 
-  isReady(adapter = this.getActive()): boolean {
-    return adapter?.getDiagnostics().inputActive.status === "pass";
+  isReady(
+    adapter = this.getActive(),
+    state: ControllerState | null = this.getState(adapter),
+  ): boolean {
+    return Boolean(
+      adapter &&
+        state?.connected &&
+        state.mappingStatus === "mapped" &&
+        adapter.getDiagnostics().inputActive.status === "pass",
+    );
   }
 }

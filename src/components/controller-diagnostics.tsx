@@ -3,13 +3,13 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   normalizeCalibratedAxis,
   observeRawAxes,
+  projectMappedControllerState,
   resetAxisCalibrations,
   saveAxisCenters,
   type AxisCalibration,
@@ -50,6 +50,7 @@ type PortSelection = BrowserSerialPortInfo & {
 
 type GamepadView = GamepadRawSnapshot & {
   diagnostics: ControllerDiagnostics;
+  state: ControllerState;
 };
 
 const BAUD_RATES = [9600, 57600, 115200] as const;
@@ -105,6 +106,29 @@ function formatNumber(value: number | null, digits = 3): string {
 function formatNormalized(value: number | null): string {
   if (value === null) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+}
+
+function formatSignedRaw(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value}`;
+}
+
+function formatPayloadChange(
+  status: "insufficient" | "no" | "yes" | undefined,
+): string {
+  if (status === "yes") return "YES";
+  if (status === "no") return "NO";
+  return "INSUFFICIENT";
+}
+
+function formatButtonBits(value: number): string {
+  return value.toString(2).padStart(16, "0").replace(/(.{4})(?=.)/g, "$1 ");
+}
+
+function activeBitLabels(value: number): string {
+  const bits = Array.from({ length: 16 }, (_, index) => index).filter(
+    (index) => (value & (1 << index)) !== 0,
+  );
+  return bits.length ? bits.map((index) => `BIT ${index}`).join(", ") : "None";
 }
 
 function errorMessage(error: unknown): string {
@@ -207,7 +231,7 @@ function SemanticGauge({ label, value }: { label: string; value: number | null }
     <div className={`semantic-gauge ${value === null ? "is-unmapped" : ""}`}>
       <div>
         <span>{label}</span>
-        <output>{formatNormalized(value)}</output>
+        <output aria-live="off">{formatNormalized(value)}</output>
       </div>
       <div
         className="semantic-gauge__track"
@@ -230,10 +254,32 @@ function GamepadAxis({ index, value }: { index: number; value: number }) {
   return (
     <div className="gamepad-axis">
       <span>AXIS {index}</span>
-      <output>{formatNormalized(value)}</output>
+      <output aria-live="off">{formatNormalized(value)}</output>
       <div className="gamepad-axis__track">
         <i style={{ left: `${position}%` }} />
       </div>
+    </div>
+  );
+}
+
+function StickField({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  const position = ((Math.max(-100, Math.min(100, value)) + 100) / 200) * 100;
+  return (
+    <div className="stick-field">
+      <div>
+        <span>{label}</span>
+        <output aria-live="off">{formatSignedRaw(value)}</output>
+      </div>
+      <div className="stick-field__track" aria-hidden="true">
+        <i style={{ left: `${position}%` }} />
+      </div>
+      <small>−100 <span>0</span> +100</small>
     </div>
   );
 }
@@ -275,15 +321,33 @@ export function ControllerDiagnosticsPage() {
   );
 
   const [calibrations, setCalibrations] = useState<AxisCalibration[]>([]);
+  const [calibrationOwnerKey, setCalibrationOwnerKey] = useState<string | null>(null);
   const [calibrationStarted, setCalibrationStarted] = useState(false);
   const [recordRange, setRecordRange] = useState(false);
   const calibrationStartedRef = useRef(false);
   const recordRangeRef = useRef(false);
+  const calibrationOwnerKeyRef = useRef<string | null>(null);
   const hasSerialSelectionRef = useRef(false);
 
   useEffect(() => {
     selectedGamepadIndexRef.current = selectedGamepadIndex;
   }, [selectedGamepadIndex]);
+
+  useEffect(() => {
+    const serialAdapter = serialAdapterRef.current;
+    if (serialSnapshot?.isOpen && serialAdapter) {
+      manager.setActive(serialAdapter.id);
+      return;
+    }
+    if (selectedGamepadIndex !== null) {
+      const gamepadAdapter = gamepadAdaptersRef.current.get(selectedGamepadIndex);
+      if (gamepadAdapter) {
+        manager.setActive(gamepadAdapter.id);
+        return;
+      }
+    }
+    manager.setActive(null);
+  }, [manager, selectedGamepadIndex, serialSnapshot?.isOpen]);
 
   useEffect(() => {
     let active = true;
@@ -352,6 +416,7 @@ export function ControllerDiagnosticsPage() {
           return {
             ...(adapter.getRawData() as GamepadRawSnapshot),
             diagnostics: adapter.getDiagnostics(),
+            state: adapter.getState(),
           };
         });
         setGamepads(views);
@@ -364,15 +429,30 @@ export function ControllerDiagnosticsPage() {
           (selected === null || !present.has(selected))
         ) {
           setSelectedGamepadIndex(views[0].index);
+          if (!hasSerialSelectionRef.current) {
+            manager.setActive(`gamepad-${views[0].index}`);
+          }
         }
         const calibrationSource =
           views.find((view) => view.index === (selected ?? views[0]?.index)) ?? null;
         if (!hasSerialSelectionRef.current && calibrationSource) {
+          const sourceKey = `gamepad:${calibrationSource.index}:${calibrationSource.id}`;
+          const sourceChanged = calibrationOwnerKeyRef.current !== sourceKey;
+          if (sourceChanged) {
+            calibrationOwnerKeyRef.current = sourceKey;
+            setCalibrationOwnerKey(sourceKey);
+            calibrationStartedRef.current = false;
+            recordRangeRef.current = false;
+            setCalibrationStarted(false);
+            setRecordRange(false);
+          }
           setCalibrations((current) =>
             observeRawAxes(
-              current,
+              sourceChanged ? [] : current,
               calibrationSource.axes,
-              calibrationStartedRef.current && recordRangeRef.current,
+              !sourceChanged &&
+                calibrationStartedRef.current &&
+                recordRangeRef.current,
             ),
           );
         }
@@ -385,6 +465,9 @@ export function ControllerDiagnosticsPage() {
       ensureAdapter(event.gamepad).update(event.gamepad);
       if (selectedGamepadIndexRef.current === null) {
         setSelectedGamepadIndex(event.gamepad.index);
+      }
+      if (!hasSerialSelectionRef.current) {
+        manager.setActive(`gamepad-${event.gamepad.index}`);
       }
       setNotice("Gamepad API 장치를 감지했습니다. 축과 버튼을 움직여 보세요.");
     };
@@ -413,7 +496,9 @@ export function ControllerDiagnosticsPage() {
   const syncSerial = useCallback(() => {
     const adapter = serialAdapterRef.current;
     if (!adapter) return;
-    setSerialSnapshot(adapter.getSnapshot());
+    const snapshot = adapter.getSnapshot();
+    setSerialSnapshot(snapshot);
+    hasSerialSelectionRef.current = snapshot.isOpen;
     setSerialHealthWarnings(adapter.getHealthWarnings());
     const diagnostics = adapter.getDiagnostics();
     setSerialDiagnostics({
@@ -427,11 +512,23 @@ export function ControllerDiagnosticsPage() {
     const state = adapter.getState();
     setSerialState({ ...state });
     if (hasSerialSelectionRef.current && state.rawAxes?.length) {
+      const sourceKey = `serial:${adapter.id}:${snapshot.openedAt ?? "opening"}`;
+      const sourceChanged = calibrationOwnerKeyRef.current !== sourceKey;
+      if (sourceChanged) {
+        calibrationOwnerKeyRef.current = sourceKey;
+        setCalibrationOwnerKey(sourceKey);
+        calibrationStartedRef.current = false;
+        recordRangeRef.current = false;
+        setCalibrationStarted(false);
+        setRecordRange(false);
+      }
       setCalibrations((current) =>
         observeRawAxes(
-          current,
+          sourceChanged ? [] : current,
           state.rawAxes ?? [],
-          calibrationStartedRef.current && recordRangeRef.current,
+          !sourceChanged &&
+            calibrationStartedRef.current &&
+            recordRangeRef.current,
         ),
       );
     }
@@ -468,10 +565,17 @@ export function ControllerDiagnosticsPage() {
       serialAdapterRef.current = null;
       serialUnsubscribeRef.current = null;
       portRef.current = port;
-      hasSerialSelectionRef.current = true;
+      hasSerialSelectionRef.current = false;
       setSerialSnapshot(null);
       setSerialHealthWarnings([]);
       setSerialState(createUnidentifiedState(false));
+      calibrationStartedRef.current = false;
+      recordRangeRef.current = false;
+      calibrationOwnerKeyRef.current = null;
+      setCalibrationStarted(false);
+      setRecordRange(false);
+      setCalibrationOwnerKey(null);
+      setCalibrations([]);
       setPortSelection({ ...port.getInfo(), selectedAt: Date.now() });
       setSerialDiagnostics({
         ...createWaitingDiagnostics("serial"),
@@ -518,6 +622,7 @@ export function ControllerDiagnosticsPage() {
 
     try {
       await adapter.connect();
+      hasSerialSelectionRef.current = true;
       setNotice(
         `Serial 포트가 ${baudRate} baud로 열렸습니다. BYROBOT 조종기라면 ‘입력 활성화’를 누르세요.`,
       );
@@ -536,6 +641,18 @@ export function ControllerDiagnosticsPage() {
     setUiError(null);
     try {
       await adapter.disconnect();
+      hasSerialSelectionRef.current = false;
+      if (selectedGamepadIndex !== null) {
+        const gamepadAdapter = gamepadAdaptersRef.current.get(selectedGamepadIndex);
+        if (gamepadAdapter) manager.setActive(gamepadAdapter.id);
+        calibrationStartedRef.current = false;
+        recordRangeRef.current = false;
+        calibrationOwnerKeyRef.current = null;
+        setCalibrationStarted(false);
+        setRecordRange(false);
+        setCalibrationOwnerKey(null);
+        setCalibrations([]);
+      }
       setNotice("Serial 연결을 해제했습니다. 로그와 통계는 화면에 유지됩니다.");
     } catch (error) {
       setUiError(`연결 해제 실패: ${errorMessage(error)}`);
@@ -557,6 +674,44 @@ export function ControllerDiagnosticsPage() {
       syncSerial();
     } catch (error) {
       setUiError(`입력 활성화 Ping 실패: ${errorMessage(error)}`);
+    }
+  };
+
+  const requestControllerInputOnce = async () => {
+    const adapter = serialAdapterRef.current;
+    if (!adapter || !serialSnapshot?.isOpen) return;
+    setUiError(null);
+    setSerialBusy(true);
+    try {
+      const frames = await adapter.requestControllerInputOnce();
+      setNotice(
+        `Controller Request 전송 완료: ${frames.map((frame) => bytesToHex(frame)).join(" / ")} · 0x71/0x70 응답을 확인하세요.`,
+      );
+    } catch (error) {
+      setUiError(`Controller 입력 요청 실패: ${errorMessage(error)}`);
+    } finally {
+      syncSerial();
+      setSerialBusy(false);
+    }
+  };
+
+  const toggleInputRequestPolling = () => {
+    const adapter = serialAdapterRef.current;
+    if (!adapter || !serialSnapshot?.isOpen) return;
+    setUiError(null);
+    try {
+      if (serialSnapshot.inputAcquisition.polling) {
+        adapter.stopInputRequestPolling();
+        setNotice("Controller Request 폴링을 중지했습니다. Push 입력은 계속 감시합니다.");
+      } else {
+        adapter.startInputRequestPolling(250);
+        setNotice(
+          "0x71/0x70 진단용 Request 폴링을 시작했습니다. 250ms는 앱의 보수적 진단 간격이며 BYROBOT 공식 권장 주기는 아닙니다.",
+        );
+      }
+      syncSerial();
+    } catch (error) {
+      setUiError(`Controller Request 폴링 실패: ${errorMessage(error)}`);
     }
   };
 
@@ -597,41 +752,70 @@ export function ControllerDiagnosticsPage() {
   const gamepadDiagnostics =
     selectedGamepad?.diagnostics ?? createWaitingDiagnostics("gamepad");
 
-  const activeMethod = portSelection
+  const activeMethod = serialSnapshot?.isOpen
     ? "serial"
     : selectedGamepad
       ? "gamepad"
-      : null;
+      : portSelection
+        ? "serial"
+        : null;
   const activeDiagnostics =
     activeMethod === "serial" ? serialDiagnostics : gamepadDiagnostics;
   const activeRawAxes =
     activeMethod === "serial"
       ? (serialState.rawAxes ?? [])
       : (selectedGamepad?.axes ?? []);
-  const mappedValues = useMemo(() => {
-    const values: Record<SemanticControl, number | null> = {
-      throttle: null,
-      yaw: null,
-      pitch: null,
-      roll: null,
-    };
-    for (const axis of calibrations) {
-      if (axis.assignedControl && axis.normalizedValue !== null) {
-        values[axis.assignedControl] = axis.normalizedValue;
-      }
-    }
-    return values;
-  }, [calibrations]);
-
-  const mappingComplete = CONTROLS.every(
-    ({ value }) => mappedValues[value] !== null,
+  const activeSourceKey =
+    activeMethod === "serial"
+      ? `serial:${serialSnapshot?.adapterId ?? "selected"}:${serialSnapshot?.openedAt ?? portSelection?.selectedAt ?? "pending"}`
+      : activeMethod === "gamepad" && selectedGamepad
+        ? `gamepad:${selectedGamepad.index}:${selectedGamepad.id}`
+        : null;
+  const activeCalibrations =
+    calibrationOwnerKey === activeSourceKey ? calibrations : [];
+  const activeAdapterState =
+    activeMethod === "serial"
+      ? serialState
+      : selectedGamepad
+        ? selectedGamepad.state
+        : createUnidentifiedState(false);
+  const commonControllerState = projectMappedControllerState(
+    activeAdapterState,
+    activeCalibrations,
   );
-  const inputActive = activeDiagnostics.inputActive.status === "pass";
-  const ready = inputActive && mappingComplete;
+
+  useEffect(() => {
+    const profile =
+      calibrationOwnerKey === activeSourceKey ? calibrations : [];
+    manager.setStateProjector((state) =>
+      projectMappedControllerState(state, profile),
+    );
+    return () => manager.setStateProjector(null);
+  }, [activeSourceKey, calibrationOwnerKey, calibrations, manager]);
+  const mappedValues = {
+    throttle: commonControllerState.throttle,
+    yaw: commonControllerState.yaw,
+    pitch: commonControllerState.pitch,
+    roll: commonControllerState.roll,
+  };
+
+  const mappingComplete = commonControllerState.mappingStatus === "mapped";
+  const inputActive =
+    commonControllerState.connected &&
+    activeDiagnostics.inputActive.status === "pass";
+  const ready =
+    inputActive && mappingComplete && commonControllerState.connected;
 
   let overallStatus = "NOT CONNECTED";
   if (ready) overallStatus = "READY";
   else if (inputActive) overallStatus = "INPUT ACTIVE · MAPPING REQUIRED";
+  else if (
+    activeMethod === "serial" &&
+    portSelection &&
+    !serialSnapshot?.isOpen
+  ) {
+    overallStatus = "DEVICE SELECTED · DISCONNECTED";
+  }
   else if (activeMethod === "serial" && serialSnapshot?.change.status === "yes") {
     overallStatus = "RAW DATA CHANGING · MAPPING REQUIRED";
   } else if (activeMethod === "serial" && serialSnapshot?.packetCount) {
@@ -647,6 +831,31 @@ export function ControllerDiagnosticsPage() {
   }
 
   const latestPacket = serialSnapshot?.latestPacket ?? null;
+  const controllerInput = serialSnapshot?.controllerInput ?? null;
+  const dataTypeRows = serialSnapshot?.dataTypeStats ?? [
+    {
+      dataType: 0x71,
+      label: "JOYSTICK",
+      packetCount5s: 0,
+      totalCount: 0,
+      latestAt: null,
+      latestPayload: [],
+      previousPayload: null,
+      payloadChange5s: "insufficient" as const,
+      changedByteIndices: [],
+    },
+    {
+      dataType: 0x70,
+      label: "BUTTON",
+      packetCount5s: 0,
+      totalCount: 0,
+      latestAt: null,
+      latestPayload: [],
+      previousPayload: null,
+      payloadChange5s: "insufficient" as const,
+      changedByteIndices: [],
+    },
+  ];
   const serialErrors = serialSnapshot?.errors ?? [];
   const visibleErrors = [...serialErrors, ...serialHealthWarnings].filter(
     (item, index, all) => all.findIndex((candidate) => candidate.code === item.code) === index,
@@ -678,6 +887,8 @@ export function ControllerDiagnosticsPage() {
     recordRangeRef.current = false;
     setCalibrationStarted(true);
     setRecordRange(false);
+    calibrationOwnerKeyRef.current = activeSourceKey;
+    setCalibrationOwnerKey(activeSourceKey);
     setCalibrations(
       observeRawAxes(
         resetAxisCalibrations(activeRawAxes.length),
@@ -693,6 +904,8 @@ export function ControllerDiagnosticsPage() {
     recordRangeRef.current = false;
     setCalibrationStarted(false);
     setRecordRange(false);
+    calibrationOwnerKeyRef.current = activeSourceKey;
+    setCalibrationOwnerKey(activeSourceKey);
     setCalibrations(resetAxisCalibrations(activeRawAxes.length));
     setNotice("캘리브레이션 값을 초기화했습니다.");
   };
@@ -842,6 +1055,29 @@ export function ControllerDiagnosticsPage() {
               공식 입력 예제와 동일한 Base→Controller Ping만 전송합니다. 비행 명령은 보내지 않습니다.
               LINK 화면이 떠도 데이터가 없으면 이 버튼을 누르세요.
             </p>
+            <div className="request-actions">
+              <button
+                type="button"
+                onClick={requestControllerInputOnce}
+                disabled={!serialSnapshot?.isOpen || serialBusy || Boolean(serialSnapshot?.inputAcquisition.polling)}
+              >
+                0x71 / 0x70 Request 1회
+              </button>
+              <button
+                type="button"
+                className={serialSnapshot?.inputAcquisition.polling ? "button-danger" : ""}
+                onClick={toggleInputRequestPolling}
+                disabled={!serialSnapshot?.isOpen || serialBusy}
+                aria-pressed={serialSnapshot?.inputAcquisition.polling ?? false}
+              >
+                {serialSnapshot?.inputAcquisition.polling ? "Request 폴링 중지" : "Request 폴링 시작"}
+              </button>
+            </div>
+            <p className={`field-help request-help ${serialSnapshot?.inputAcquisition.requestRecommended ? "is-recommended" : ""}`}>
+              {serialSnapshot?.inputAcquisition.requestRecommended
+                ? "Ping 후 2초 이상 0x71이 없습니다. Request fallback을 시도할 수 있습니다."
+                : "공식 Request(0x04) 구조를 사용합니다. 250ms는 앱 진단 간격이며 공식 권장 주기가 아닙니다."}
+            </p>
           </fieldset>
 
           <fieldset className="connection-fieldset gamepad-selector">
@@ -850,7 +1086,23 @@ export function ControllerDiagnosticsPage() {
               <span>감지된 Gamepad</span>
               <select
                 value={selectedGamepadIndex ?? ""}
-                onChange={(event) => setSelectedGamepadIndex(event.target.value === "" ? null : Number(event.target.value))}
+                onChange={(event) => {
+                  const next = event.target.value === "" ? null : Number(event.target.value);
+                  setSelectedGamepadIndex(next);
+                  if (next !== null && !serialSnapshot?.isOpen) {
+                    const adapter = gamepadAdaptersRef.current.get(next);
+                    if (adapter) manager.setActive(adapter.id);
+                  }
+                  if (!portSelection) {
+                    calibrationStartedRef.current = false;
+                    recordRangeRef.current = false;
+                    calibrationOwnerKeyRef.current = null;
+                    setCalibrationStarted(false);
+                    setRecordRange(false);
+                    setCalibrationOwnerKey(null);
+                    setCalibrations([]);
+                  }
+                }}
                 disabled={gamepads.length === 0}
               >
                 {gamepads.length === 0 ? <option value="">연결된 Gamepad 없음</option> : null}
@@ -879,7 +1131,28 @@ export function ControllerDiagnosticsPage() {
             <DefinitionRow label="Selected adapter" value={selectedAdapter} />
             <DefinitionRow label="Protocol" value={protocol} />
             <DefinitionRow label="Baud rate" value={activeMethod === "serial" ? `${baudRate}` : "N/A"} />
-            <DefinitionRow label="Activation Ping" value={serialSnapshot ? `${serialSnapshot.activationPingCount} sent · last ${formatTime(serialSnapshot.lastWriteAt)}` : "Not sent"} />
+            <DefinitionRow label="Activation Ping" value={serialSnapshot ? `${serialSnapshot.activationPingCount} sent · last ${formatTime(serialSnapshot.activationPingLastAt)}` : "Not sent"} />
+            <DefinitionRow
+              label="Input acquisition"
+              value={
+                serialSnapshot
+                  ? `${serialSnapshot.inputAcquisition.mode.toUpperCase()} · ${serialSnapshot.inputAcquisition.requestCount} request(s)`
+                  : "Passive after Ping"
+              }
+            />
+            <DefinitionRow
+              label="Last Request"
+              value={
+                serialSnapshot?.inputAcquisition.lastRequestedDataType !== null &&
+                serialSnapshot?.inputAcquisition.lastRequestedDataType !== undefined
+                  ? `${formatHex(serialSnapshot.inputAcquisition.lastRequestedDataType)} · ${formatTime(serialSnapshot.inputAcquisition.lastRequestAt)}`
+                  : "Not sent"
+              }
+            />
+            <DefinitionRow
+              label="Input packets since first Request"
+              value={`${serialSnapshot?.inputAcquisition.inputPacketsAfterFirstRequest ?? 0} packet(s)`}
+            />
           </dl>
           <div className="detection-note">
             <strong>탐지 원칙</strong>
@@ -939,11 +1212,189 @@ export function ControllerDiagnosticsPage() {
         </div>
       </section>
 
+      <section className="panel data-type-panel" aria-labelledby="data-type-title">
+        <div className="panel-heading">
+          <div>
+            <span>D / VALID PACKET ROUTING</span>
+            <h2 id="data-type-title">DATA TYPE MONITOR</h2>
+          </div>
+          <small>ROLLING WINDOW · LAST 5 SECONDS</small>
+        </div>
+        <div className="data-type-table-wrap" tabIndex={0}>
+          <table className="data-type-table">
+            <caption className="visually-hidden">
+              CRC-valid BYROBOT packet counts grouped by DataType over the latest five seconds
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">DataType</th>
+                <th scope="col">Official name</th>
+                <th scope="col">Packets / 5s</th>
+                <th scope="col">Total</th>
+                <th scope="col">Last received</th>
+                <th scope="col">Latest payload</th>
+                <th scope="col">Payload changing / 5s</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dataTypeRows.map((entry) => (
+                <tr
+                  key={entry.dataType}
+                  className={entry.dataType === 0x71 || entry.dataType === 0x70 ? "is-controller-input" : ""}
+                >
+                  <th scope="row">{formatHex(entry.dataType)}</th>
+                  <td>
+                    {entry.label ? <strong>{entry.label}</strong> : <span>—</span>}
+                  </td>
+                  <td><b>{entry.packetCount5s}</b> packets</td>
+                  <td>{entry.totalCount}</td>
+                  <td>{formatTime(entry.latestAt)}</td>
+                  <td>
+                    <code>{entry.latestPayload.length ? bytesToHex(entry.latestPayload) : "—"}</code>
+                    {entry.changedByteIndices.length ? (
+                      <small>changed byte: {entry.changedByteIndices.join(", ")}</small>
+                    ) : null}
+                  </td>
+                  <td>
+                    <span className={`change-badge change--${entry.payloadChange5s}`}>
+                      {formatPayloadChange(entry.payloadChange5s)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="raw-disclaimer">
+          기존 parser가 length와 CRC를 통과시킨 packet만 집계합니다. 서로 다른 DataType끼리는 payload를 비교하지 않습니다.
+        </p>
+      </section>
+
+      <section className="panel controller-input-panel" aria-labelledby="controller-input-title">
+        <div className="panel-heading">
+          <div>
+            <span>E / OFFICIAL CONTROLLER PAYLOAD</span>
+            <h2 id="controller-input-title">BYROBOT CONTROLLER INPUT</h2>
+          </div>
+          <span className={`candidate-tag ${inputActive ? "is-active" : ""}`}>
+            {inputActive ? "INPUT ACTIVE" : "EVIDENCE PENDING"}
+          </span>
+        </div>
+
+        <div className="input-evidence-grid">
+          <span className={controllerInput?.evidence.joystickSeen ? "is-pass" : ""}>
+            0x71 SEEN <b>{controllerInput?.evidence.joystickSeen ? "PASS" : "WAITING"}</b>
+          </span>
+          <span className={controllerInput?.evidence.joystickChangedEver ? "is-pass" : ""}>
+            STICK CHANGE <b>{controllerInput?.evidence.joystickChangedEver ? "PASS" : "WAITING"}</b>
+          </span>
+          <span className={controllerInput?.evidence.buttonSeen ? "is-pass" : ""}>
+            0x70 SEEN <b>{controllerInput?.evidence.buttonSeen ? "PASS" : "WAITING"}</b>
+          </span>
+          <span className={controllerInput?.evidence.buttonChangedEver ? "is-pass" : ""}>
+            BUTTON CHANGE <b>{controllerInput?.evidence.buttonChangedEver ? "PASS" : "WAITING"}</b>
+          </span>
+        </div>
+
+        <div className="controller-input-grid">
+          <article className="input-card joystick-card">
+            <header>
+              <div>
+                <span>DATATYPE 0x71</span>
+                <h3>JOYSTICK</h3>
+              </div>
+              <b>{controllerInput?.joystickPacketCount ?? 0} packet(s)</b>
+            </header>
+            {controllerInput?.latestJoystick ? (
+              <>
+                <div className="input-payload-row">
+                  <span>RAW PAYLOAD</span>
+                  <code>{bytesToHex(controllerInput.latestJoystick.rawPayload)}</code>
+                  <b className={controllerInput.latestJoystickChanged ? "is-changed" : ""}>
+                    LAST SAMPLE {controllerInput.latestJoystickChanged ? "CHANGED" : "SAME"}
+                  </b>
+                </div>
+                {!controllerInput.latestJoystick.axesWithinDocumentedRange ? (
+                  <p className="input-layout-warning">
+                    축 값이 공식 범위 −100…+100 밖입니다. Common ControllerState에는 반영하지 않았습니다.
+                  </p>
+                ) : null}
+                <div className="stick-grid">
+                  <StickField label="Left X" value={controllerInput.latestJoystick.left.x} />
+                  <StickField label="Left Y" value={controllerInput.latestJoystick.left.y} />
+                  <StickField label="Right X" value={controllerInput.latestJoystick.right.x} />
+                  <StickField label="Right Y" value={controllerInput.latestJoystick.right.y} />
+                </div>
+                <dl className="joystick-events">
+                  <DefinitionRow
+                    label="Left direction / event"
+                    value={`${controllerInput.latestJoystick.left.directionName} (${formatHex(controllerInput.latestJoystick.left.direction)}) · ${controllerInput.latestJoystick.left.eventName} (${controllerInput.latestJoystick.left.event})`}
+                  />
+                  <DefinitionRow
+                    label="Right direction / event"
+                    value={`${controllerInput.latestJoystick.right.directionName} (${formatHex(controllerInput.latestJoystick.right.direction)}) · ${controllerInput.latestJoystick.right.eventName} (${controllerInput.latestJoystick.right.event})`}
+                  />
+                  <DefinitionRow label="Last decoded" value={formatTime(controllerInput.latestJoystick.receivedAt)} />
+                </dl>
+              </>
+            ) : (
+              <div className="empty-state compact">
+                <strong>0x71 Joystick packet not decoded yet</strong>
+                <p>{controllerInput?.joystickUnsupportedReason ?? "Controller Ping 후 스틱을 움직이세요. 0x71이 없으면 Request fallback을 사용하세요."}</p>
+              </div>
+            )}
+            {controllerInput?.joystickUnsupportedReason ? (
+              <p className="input-layout-warning">{controllerInput.joystickUnsupportedReason}</p>
+            ) : null}
+          </article>
+
+          <article className="input-card button-card">
+            <header>
+              <div>
+                <span>DATATYPE 0x70</span>
+                <h3>BUTTON</h3>
+              </div>
+              <b>{controllerInput?.buttonPacketCount ?? 0} packet(s)</b>
+            </header>
+            {controllerInput?.latestButton ? (
+              <>
+                <dl className="button-payload">
+                  <DefinitionRow label="Raw payload" value={<code>{bytesToHex(controllerInput.latestButton.rawPayload)}</code>} />
+                  <DefinitionRow label="Button value" value={`${formatHex(controllerInput.latestButton.button, 4)} · ${controllerInput.latestButton.button}`} />
+                  <DefinitionRow label="Binary" value={<code>{formatButtonBits(controllerInput.latestButton.button)}</code>} />
+                  <DefinitionRow label="Active bits" value={activeBitLabels(controllerInput.latestButton.button)} />
+                  <DefinitionRow label="Event" value={`${controllerInput.latestButton.eventName} (${controllerInput.latestButton.event})`} />
+                  <DefinitionRow
+                    label="Changed mask"
+                    value={`${formatHex(controllerInput.latestButtonChangedMask, 4)} · ${activeBitLabels(controllerInput.latestButtonChangedMask)}`}
+                  />
+                  <DefinitionRow label="Last decoded" value={formatTime(controllerInput.latestButton.receivedAt)} />
+                </dl>
+                <p className={controllerInput.latestButtonChanged ? "button-change is-changed" : "button-change"}>
+                  LAST SAMPLE {controllerInput.latestButtonChanged ? "CHANGED" : "SAME"}
+                </p>
+              </>
+            ) : (
+              <div className="empty-state compact">
+                <strong>0x70 Button packet not decoded yet</strong>
+                <p>{controllerInput?.buttonUnsupportedReason ?? "버튼을 하나씩 눌러 button bitmask와 event 변화를 확인하세요."}</p>
+              </div>
+            )}
+            {controllerInput?.buttonUnsupportedReason ? (
+              <p className="input-layout-warning">{controllerInput.buttonUnsupportedReason}</p>
+            ) : null}
+          </article>
+        </div>
+        <p className="raw-disclaimer">
+          Codec: {controllerInput?.codecLabel ?? "Official Coding/E-Drone 8-byte profile candidate"}. 정확히 8-byte Joystick / 3-byte Button일 때만 해석하며 제품 모델은 이 구조만으로 확정하지 않습니다.
+        </p>
+      </section>
+
       <div className="two-column-grid parsed-state-grid">
         <section className="panel" aria-labelledby="packet-title">
           <div className="panel-heading">
             <div>
-              <span>D / PARSED PACKET</span>
+              <span>F / PARSED PACKET</span>
               <h2 id="packet-title">최근 CRC-valid 패킷</h2>
             </div>
           </div>
@@ -979,7 +1430,7 @@ export function ControllerDiagnosticsPage() {
         <section className="panel" aria-labelledby="state-title">
           <div className="panel-heading">
             <div>
-              <span>E / CONTROLLER STATE</span>
+              <span>G / CONTROLLER STATE</span>
               <h2 id="state-title">Common ControllerState</h2>
             </div>
             <span className={`mapping-tag ${mappingComplete ? "is-mapped" : ""}`}>
@@ -1023,7 +1474,7 @@ export function ControllerDiagnosticsPage() {
               </div>
               <div className="gamepad-buttons">
                 {selectedGamepad.buttons.map((button, index) => (
-                  <output key={index} className={button.pressed ? "is-pressed" : ""}>
+                  <output key={index} className={button.pressed ? "is-pressed" : ""} aria-live="off">
                     <span>BUTTON {index + 1}</span>
                     <strong>{button.pressed ? "ON" : "OFF"}</strong>
                     <small>{button.value.toFixed(2)}</small>
@@ -1070,9 +1521,14 @@ export function ControllerDiagnosticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {calibrations.map((axis) => (
+                {activeCalibrations.map((axis) => (
                   <tr key={axis.index}>
-                    <th>AXIS {axis.index}</th>
+                    <th>
+                      {activeMethod === "serial"
+                        ? (["Left X", "Left Y", "Right X", "Right Y"][axis.index] ?? `AXIS ${axis.index}`)
+                        : `AXIS ${axis.index}`}
+                      {activeMethod === "serial" ? <small>AXIS {axis.index}</small> : null}
+                    </th>
                     <td>{formatNumber(axis.rawCurrent)}</td>
                     <td>{formatNumber(axis.observedMinimum)}</td>
                     <td>{formatNumber(axis.observedMaximum)}</td>
@@ -1108,9 +1564,10 @@ export function ControllerDiagnosticsPage() {
         </div>
         <ol>
           <li>LINK 화면과 이 페이지의 DEVICE / SERIAL OPEN 상태가 한 장에 보이게 캡처</li>
-          <li>스틱 중앙 상태의 RAW 로그와 Data changing 상태 캡처</li>
-          <li>왼쪽 X/Y, 오른쪽 X/Y를 각각 끝까지 움직인 뒤 RAW 로그 캡처</li>
-          <li>각 버튼을 하나씩 누르며 DataType, Length, From, To, Payload, CRC valid 캡처</li>
+          <li>DATA TYPE MONITOR에서 0x71 count와 payload가 보이는 중앙 상태 캡처</li>
+          <li>왼쪽 X/Y, 오른쪽 X/Y를 각각 움직여 네 실시간 값과 0x71 Payload changing YES를 캡처</li>
+          <li>각 버튼을 하나씩 누르며 0x70 button value, event, changed mask를 캡처</li>
+          <li>INPUT ACTIVE 네 evidence가 모두 PASS인 화면과 calibration/mapping 결과 캡처</li>
           <li>Vendor ID, Product ID, baud rate와 사용한 조종기 정확한 제품명/뒷면 라벨 기록</li>
         </ol>
       </section>

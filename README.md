@@ -14,7 +14,7 @@ Physical USB Controller
   → (future) Drone Simulator
 ```
 
-장치를 선택한 것, 포트를 연 것, RAW 데이터를 받은 것, 패킷을 검증한 것, 실제 조종 입력이 바뀐 것을 각각 별도 상태로 표시합니다. 제품별 채널이 확인되지 않았다면 `throttle`, `yaw`, `pitch`, `roll`은 `0`이 아니라 `null`입니다.
+장치를 선택한 것, 포트를 연 것, RAW 데이터를 받은 것, 패킷을 검증한 것, 실제 조종 입력이 바뀐 것을 각각 별도 상태로 표시합니다. 공식 Coding/E-Drone 계열의 `Joystick(0x71)` 8바이트와 `Button(0x70)` 3바이트 구조를 엄격한 길이 검사 뒤 해석하지만, 제품별 비행축 배정이 확인되지 않았다면 `throttle`, `yaw`, `pitch`, `roll`은 `0`이 아니라 `null`입니다.
 
 ## 1. 실행 방법
 
@@ -86,8 +86,11 @@ Gamepad raw axis를 의미 축으로 고정하지 않았습니다. 캘리브레�
 6. **Serial 연결**을 누릅니다.
 7. `SERIAL OPEN`이 PASS인지 확인합니다.
 8. **BYROBOT 입력 활성화 (Controller Ping)**을 누릅니다.
-9. 좌·우 스틱을 하나씩 움직이고 버튼을 하나씩 누릅니다.
-10. TOTAL BYTES, BYTES/SEC, LAST RECEIVED와 RAW 로그가 바뀌는지 확인합니다.
+9. DATA TYPE MONITOR에서 최근 5초 `0x71 JOYSTICK`, `0x70 BUTTON` count를 확인합니다.
+10. 좌·우 스틱을 하나씩 움직여 0x71 payload와 Left X/Y, Right X/Y가 변하는지 확인합니다.
+11. 버튼을 하나씩 눌러 0x70 button value, bitmask, event가 변하는지 확인합니다.
+12. Ping 뒤 2초 이상 0x71이 전혀 없다면 **0x71 / 0x70 Request 1회**를 누릅니다.
+13. 1회 Request에서만 snapshot이 오고 지속 변화가 안 보이면 **Request 폴링 시작**을 눌러 진단합니다.
 
 앱이 보내는 활성화 프레임은 공식 Base(`0x70`) → Controller(`0x20`) Ping 구조에서 만든 다음 값입니다.
 
@@ -96,6 +99,15 @@ Gamepad raw axis를 의미 축으로 고정하지 않았습니다. 캘리브레�
 ```
 
 비행/모터 명령은 보내지 않습니다.
+
+Request fallback도 공식 `Protocol::Request` 구조만 사용합니다.
+
+```text
+Joystick Request: 0A 55 04 01 70 20 71 EA 4F
+Button Request:   0A 55 04 01 70 20 70 CB 5F
+```
+
+공식 입력 예제의 우선 경로는 Controller Ping 뒤 push 입력을 기다리는 방식입니다. 공식 문서에는 Joystick polling 권장 주기가 없으므로 앱의 250ms 간격은 사용자가 명시적으로 켜는 보수적 진단 설정이며 공식 권장값으로 표시하지 않습니다.
 
 ## 6. RAW 데이터 확인 방법
 
@@ -125,6 +137,27 @@ RAW SERIAL MONITOR는 브라우저의 각 수신 단위를 가공 전에 저장�
 
 시리얼 read chunk 경계나 패킷 안의 시간/카운터만 달라져도 YES가 될 수 있으므로, 이 값만으로 `CONTROLLER INPUT ACTIVE`나 READY를 판정하지 않습니다.
 
+### DATA TYPE MONITOR
+
+- 기존 parser가 CRC-valid로 확정한 모든 packet을 DataType별로 집계
+- 최근 5초 count와 세션 total을 분리
+- 같은 DataType의 최근 payload끼리만 변화 여부 비교
+- `0x71 JOYSTICK`, `0x70 BUTTON`은 0건이어도 고정 표시
+- 최근 5초 표본이 2개 미만이면 `INSUFFICIENT`, 같으면 `NO`, 다르면 `YES`
+
+### 공식 Controller input decode
+
+```text
+0x71 · 8 bytes
+left.x(s8), left.y(s8), left.direction(u8), left.event(u8),
+right.x(s8), right.y(s8), right.direction(u8), right.event(u8)
+
+0x70 · 3 bytes
+button(u16 little-endian), event(u8)
+```
+
+Joystick 축은 문서 범위 `-100…+100`일 때만 `rawAxes`의 `[Left X, Left Y, Right X, Right Y]` 순서로 `-1…+1` 정규화합니다. payload 길이가 다르거나 범위 밖이면 RAW와 오류 이유만 표시하고 ControllerState에는 반영하지 않습니다. 이는 구형 Drone Fighter처럼 같은 DataType에 다른 payload 구조를 쓰는 제품을 잘못 해석하지 않기 위한 조치입니다.
+
 ## 7. 어떤 결과가 나오면 1차 성공인가
 
 스마트 조종기 스틱 조작 전/후에 다음이 보여야 합니다.
@@ -134,7 +167,7 @@ Device detected        PASS
 Serial port open       PASS
 Raw data received      PASS
 BYROBOT packet parsed  PASS 또는 Candidate 조사 가능
-Controller input       제품 adapter 검증 전에는 WAITING 가능
+Controller input       0x71 이동 + 0x70 버튼 상호작용 뒤 PASS
 ```
 
 1차 RAW 수신 성공 조건:
@@ -151,6 +184,14 @@ BYROBOT 공통 프레임 성공 조건:
 - Header+Payload CRC16이 wire의 little-endian CRC와 일치
 - PARSED PACKET에 DataType, Length, From, To, Payload, CRC valid가 표시
 
+이번 입력 단계의 성공 조건:
+
+- 최근 5초 DATA TYPE MONITOR에 `0x71 JOYSTICK` count가 증가
+- 실제 stick 이동 시 0x71 payload와 Left/Right X/Y 중 해당 값이 변화
+- `0x70 BUTTON` 수신 후 버튼을 누르면 bitmask/event가 변화
+- 위 두 입력 증거가 같은 연결 세션에서 확인된 뒤에만 `CONTROLLER INPUT ACTIVE`가 PASS
+- calibration의 네 의미 축이 사용자 배정까지 완료된 뒤에만 Common ControllerState가 `mapped`이고 READY
+
 ## 8. 진단 단계의 의미
 
 | 단계 | PASS 조건 |
@@ -161,7 +202,7 @@ BYROBOT 공통 프레임 성공 조건:
 | PACKET PARSED | 완전한 BYROBOT profile frame의 length와 CRC 통과. Gamepad는 N/A |
 | CONTROLLER INPUT ACTIVE | 검증된 adapter가 실제 축 delta 또는 버튼 edge를 확인 |
 
-READY는 실제 input change가 확인되고 네 의미 축의 사용자/제품 매핑까지 완성된 경우에만 표시합니다.
+Serial의 `CONTROLLER INPUT ACTIVE`는 CRC-valid 0x71의 실제 stick 변화와 공식 0x70의 버튼 상호작용이 모두 확인된 경우에만 PASS입니다. 이 증거는 연결 세션 동안 유지되고 재연결 시 초기화됩니다. READY는 여기에 네 의미 축의 사용자/제품 매핑까지 완성된 경우에만 표시합니다.
 
 ## 9. 오류와 확인 순서
 
@@ -265,7 +306,8 @@ src/controllers/
 ├─ connections/
 │  └─ serial-connection.ts          # request 이후 open/read/write/cancel/close 수명주기
 ├─ diagnostics/
-│  └─ change-detector.ts            # RAW/packet 변화 휴리스틱
+│  ├─ change-detector.ts            # RAW/packet 변화 휴리스틱
+│  └─ data-type-monitor.ts           # CRC-valid DataType별 최근 5초/누적 집계
 ├─ adapters/
 │  ├─ gamepad-adapter.ts            # Gamepad API → raw ControllerState
 │  ├─ byrobot-serial-base.ts         # Serial + parser + stats + generic fallback
@@ -276,7 +318,8 @@ src/controllers/
    ├─ types.ts                       # profile과 공통 packet 타입
    ├─ crc16.ts                       # polynomial 0x1021, initial 0x0000
    ├─ parser.ts                      # stream buffering, length, CRC, resync
-   └─ packet.ts                      # 공식 device-addressed packet/Ping builder
+   ├─ packet.ts                      # 공식 device-addressed Ping/Request builder
+   └─ controller-input.ts            # 엄격한 0x71 Joystick / 0x70 Button codec와 evidence
 ```
 
 UI는 `src/components/controller-diagnostics.tsx`, Web Serial 연결/RAW 처리 핵심은 `src/controllers/adapters/byrobot-serial-base.ts`, 순수 stream parser는 `src/controllers/protocols/byrobot/parser.ts`에 있습니다.
@@ -320,9 +363,10 @@ parser 테스트는 다음을 포함합니다.
 5. valid packet의 DataType, Length, From, To 기록
 6. 가능하면 공식 Information 응답의 modelNumber 확보
 7. 제품 adapter의 `matches()`에서 `none / candidate / confirmed`와 evidence 반환
-8. 공식 문서와 실제 capture가 일치한 payload만 `mapPacket()`에서 해석
-9. raw axis 순서를 먼저 노출하고 의미 축은 calibration/profile로 분리
-10. CRC/length/축/버튼 변화 테스트 추가
+8. 공식 문서와 실제 capture가 일치한 payload만 `ByrobotControllerInputCodec`으로 구현해 adapter에 주입
+9. 제품별 Request 가능 DataType/획득 방식을 adapter policy로 override
+10. raw axis 순서를 먼저 노출하고 의미 축은 calibration/profile로 분리
+11. CRC/length/축/버튼 변화 테스트 추가
 
 제품 adapter를 추가해도 3D 시뮬레이터나 게임 코드는 수정하지 않습니다. 이후 시뮬레이터는 Common ControllerState만 구독합니다.
 
@@ -334,17 +378,24 @@ parser 테스트는 다음을 포함합니다.
 - Web Serial 포트 선택, 9600/57600/115200, 8N1
 - 공식 BYROBOT device-addressed frame 복원과 CRC 검증
 - 같은 start code를 쓰는 legacy profile을 별도 정의할 수 있는 parser 구조
-- Generic BYROBOT Serial 진단
+- Generic BYROBOT Serial 진단과 명시적인 Coding/E-Drone input profile 후보
 - RAW 변화 관찰, 최근 100개 로그, 복사/일시정지/지우기
 - 공식 Controller Ping을 통한 입력 활성화 시도
+- CRC-valid DataType별 최근 5초 count와 동일 DataType payload 변화 표시
+- 공식 Coding/E-Drone 8-byte Joystick과 3-byte Button strict decode
+- Left X/Y, Right X/Y, direction/event, button bitmask/event 실시간 표시
+- 공식 Request 1회 및 사용자 제어 진단 polling fallback
+- calibration 결과를 실제 mapped Common ControllerState로 projection
 - 사용자 지정 Gamepad axis calibration/mapping
 
 ### 아직 실제 장치 검증 전
 
-- BYROBOT Smart Controller의 USB descriptor, modelNumber, stick payload
+- 현재 사용 중인 Smart Controller의 정확한 USB descriptor와 Information modelNumber
 - 사용자가 지칭한 PRC-95의 공식 제품 식별과 protocol
-- BYROBOT Battle Drone Controller의 실제 USB capture와 stick payload
+- BYROBOT Battle Drone Controller의 실제 USB capture가 Coding/E-Drone 8/3-byte profile과 일치하는지
 - 각 제품의 throttle/yaw/pitch/roll 의미 채널 배정
+
+Smart/PRC-95/Battle 제품 placeholder는 기본적으로 RAW-only codec과 Request 비활성 정책을 사용합니다. 실제 모델/캡처 근거가 확보되기 전에는 Coding/E-Drone layout을 자동 상속하지 않습니다. 현재 진단 화면의 Generic adapter만 주소 `Controller(0x20) → Base(0x70)`, 8/3-byte 길이, 축 범위를 모두 검증하는 Coding/E-Drone 공식 profile 후보를 명시적으로 사용합니다.
 
 공식 Coding Drone 정의의 `0x00032004 = Battle Drone Controller USB`는 match 근거로만 준비되어 있으며, 실제 Information 응답을 받기 전에는 Battle Drone 모델로 확정하지 않습니다. PRC-95를 공식 제품명 `BATTLE DRONE (BRB-95)`와 같은 제품이라고 가정하지 않습니다.
 
@@ -371,24 +422,28 @@ parser 테스트는 다음을 포함합니다.
 
 1. 실제 대상 조종기에서 안정적으로 포트를 열 수 있음
 2. Ping 또는 공식 handshake 뒤 RAW가 지속 수신됨
-3. 스틱/버튼별 RAW 변화가 반복 재현됨
-4. packet length와 CRC가 안정적으로 검증됨
-5. 제품 모델을 공식 Information/model evidence로 식별하거나 명시적 사용자 profile로 선택함
-6. 네 physical channel을 raw axis로 검증함
-7. center/min/max/inversion/dead-zone calibration이 완료됨
-8. throttle/yaw/pitch/roll이 `-1.0…+1.0`으로 안정적으로 변함
-9. 중립에서 값이 dead zone 안에 있고 축 간 간섭이 없음
-10. 버튼 edge가 누름/해제 모두 안정적으로 감지됨
-11. `CONTROLLER INPUT ACTIVE`와 READY가 실제 동작 후에만 PASS가 됨
+3. DATA TYPE MONITOR에서 0x71/0x70이 독립적으로 식별됨
+4. 선택된 제품 adapter의 공식/실측 Joystick layout이 검증되고 네 raw stick 값이 실시간 변화함(Coding/E-Drone profile은 0x71 8-byte)
+5. 선택된 제품 adapter의 공식/실측 Button layout과 value/event 변화가 검증됨(Coding/E-Drone profile은 0x70 3-byte)
+6. packet length와 CRC가 안정적으로 검증됨
+7. 제품 모델을 공식 Information/model evidence로 식별하거나 명시적 사용자 profile로 선택함
+8. 네 physical channel을 raw axis로 검증함
+9. center/min/max/inversion/dead-zone calibration이 완료됨
+10. throttle/yaw/pitch/roll이 `-1.0…+1.0`으로 안정적으로 변함
+11. 중립에서 값이 dead zone 안에 있고 축 간 간섭이 없음
+12. 버튼 edge가 누름/해제 모두 안정적으로 감지됨
+13. `CONTROLLER INPUT ACTIVE`와 READY가 실제 동작 후에만 PASS가 됨
 
 그때 Three.js/React Three Fiber 쪽은 `ControllerState`만 받아 비행 물리에 연결합니다.
 
 ## 19. 공식 참고 자료
 
 - [Coding Drone Protocol Intro](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/01_intro/)
+- [Coding Drone DataType](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/03_datatype/)
 - [Coding Drone Protocol Structs](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/05_structs/)
 - [Coding Drone Input Example](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/library/python/coding_drone/examples_12_input/)
 - [Coding Drone Definitions](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/04_definitions/)
+- [E-Drone Definitions](https://dev.byrobot.co.kr/documents/kr/products/e_drone/protocol/04_definitions/)
 - [E-Drone Firmware Updates](https://dev.byrobot.co.kr/documents/kr/products/e_drone/log/updates/firmware/)
 - [Battle Drone Product Page](https://dev.byrobot.co.kr/documents/kr/products/battle_drone/)
 - [Legacy Petrone Link Protocol](https://dev.byrobot.co.kr/documents/kr/products/petrone/protocol/link/01_intro/)

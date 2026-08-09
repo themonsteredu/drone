@@ -1,3 +1,31 @@
+/**
+ * Protocol-neutral flight controls and deterministic simulator physics.
+ *
+ * The controller/adapter boundary owns hardware-specific axis direction. This
+ * module therefore has one stable semantic contract:
+ *
+ * - throttle +1: up
+ * - yaw +1: clockwise
+ * - pitch +1: forward
+ * - roll +1: aircraft-right
+ */
+
+export const FLIGHT_PHASE = {
+  READY: "READY",
+  START: "START",
+  TAKEOFF: "TAKEOFF",
+  FLIGHT: "FLIGHT",
+  LANDING: "LANDING",
+  STOP: "STOP",
+  EMERGENCY: "EMERGENCY",
+} as const;
+
+export type FlightPhase = (typeof FLIGHT_PHASE)[keyof typeof FLIGHT_PHASE];
+
+/**
+ * Compatibility display value retained for the existing simulator UI. New
+ * code should use `FlightState.phase`, which represents the full state machine.
+ */
 export type FlightMode =
   | "landed"
   | "taking_off"
@@ -5,7 +33,21 @@ export type FlightMode =
   | "landing"
   | "emergency";
 
-export type FlightCommand = "takeoff" | "land" | "emergency" | "reset";
+export type FlightCommand =
+  | "start"
+  | "takeoff"
+  | "land"
+  | "emergency"
+  | "stop"
+  | "reset";
+
+export type FlightSpeedLevel = "beginner" | "normal" | "high";
+
+export const FLIGHT_SPEED_SCALE: Readonly<Record<FlightSpeedLevel, number>> = {
+  beginner: 0.35,
+  normal: 0.65,
+  high: 1,
+};
 
 export interface FlightVector3 {
   x: number;
@@ -34,6 +76,9 @@ export interface FlightTilt {
 }
 
 export interface FlightState {
+  /** Full educational flight state machine. */
+  phase: FlightPhase;
+  /** Legacy display state; use `phase` for transitions and behavior. */
   mode: FlightMode;
   /** World coordinates: +Y is up and +Z is forward when yaw is zero. */
   position: FlightVector3;
@@ -43,15 +88,43 @@ export interface FlightState {
   yawRate: number;
   tilt: FlightTilt;
   smoothedInput: FlightAxes;
+  /** Heading captured when takeoff begins; used by headless mode. */
+  takeoffYaw: number;
+  /** Normalized animation signal. Rendering remains a DroneVisual concern. */
+  rotorSpeed: number;
+  /** Requires reset after an emergency has completed. */
+  emergencyLatched: boolean;
 }
 
 export interface FlightModelConfig {
+  /** Raw stick values at or inside this radius become zero. */
   deadZone: number;
+  /** 0 is linear, 1 is cubic. Endpoints always remain +/-1. */
+  expo: number;
+  /** Additional user sensitivity before the selected speed level is applied. */
+  sensitivity: number;
+  speedLevel: FlightSpeedLevel;
+  /** Uses the takeoff heading instead of current aircraft yaw for pitch/roll. */
+  headless: boolean;
+  stabilization: boolean;
+  /** Positive throttle at which accidental yaw suppression may engage. */
+  ascentYawSuppressionThrottle: number;
+  /** Raw yaw up to this magnitude is treated as accidental during ascent. */
+  ascentYawSuppressionLimit: number;
   inputResponseRate: number;
   horizontalVelocityResponseRate: number;
   verticalVelocityResponseRate: number;
   yawRateResponseRate: number;
   tiltResponseRate: number;
+  stabilizedHorizontalDecelerationRate: number;
+  directHorizontalDecelerationRate: number;
+  stabilizedVerticalDecelerationRate: number;
+  directVerticalDecelerationRate: number;
+  stabilizedYawDecelerationRate: number;
+  directYawDecelerationRate: number;
+  stabilizedTiltReturnRate: number;
+  directTiltReturnRate: number;
+  nonFlightHorizontalResponseRate: number;
   maxHorizontalSpeed: number;
   maxVerticalSpeed: number;
   maxYawRate: number;
@@ -60,27 +133,52 @@ export interface FlightModelConfig {
   takeoffSpeed: number;
   landingSpeed: number;
   emergencyDescentSpeed: number;
+  landingSlowdownHeight: number;
+  groundSnapHeight: number;
+  rotorResponseRate: number;
   maxElapsedSeconds: number;
   maxSubstepSeconds: number;
 }
 
 export const DEFAULT_DEAD_ZONE = 0.1;
+export const DEFAULT_EXPO = 0.45;
+export const DEFAULT_SPEED_LEVEL: FlightSpeedLevel = "normal";
 
 export const DEFAULT_FLIGHT_CONFIG: Readonly<FlightModelConfig> = {
   deadZone: DEFAULT_DEAD_ZONE,
-  inputResponseRate: 9,
-  horizontalVelocityResponseRate: 4.5,
-  verticalVelocityResponseRate: 5,
+  expo: DEFAULT_EXPO,
+  sensitivity: 1,
+  speedLevel: DEFAULT_SPEED_LEVEL,
+  headless: false,
+  stabilization: true,
+  ascentYawSuppressionThrottle: 0.45,
+  ascentYawSuppressionLimit: 0.2,
+  inputResponseRate: 10,
+  horizontalVelocityResponseRate: 4.8,
+  verticalVelocityResponseRate: 5.2,
   yawRateResponseRate: 5.5,
   tiltResponseRate: 8,
+  stabilizedHorizontalDecelerationRate: 6,
+  directHorizontalDecelerationRate: 1.35,
+  stabilizedVerticalDecelerationRate: 6.5,
+  directVerticalDecelerationRate: 1.8,
+  stabilizedYawDecelerationRate: 7,
+  directYawDecelerationRate: 1.8,
+  stabilizedTiltReturnRate: 9,
+  directTiltReturnRate: 1.5,
+  nonFlightHorizontalResponseRate: 8,
   maxHorizontalSpeed: 3,
   maxVerticalSpeed: 2,
   maxYawRate: Math.PI,
   maxTilt: Math.PI / 10,
   takeoffHeight: 1.4,
   takeoffSpeed: 1.1,
-  landingSpeed: 0.75,
-  emergencyDescentSpeed: 2.5,
+  landingSpeed: 0.72,
+  // Emergency means safe, stabilized landing in the educational simulator.
+  emergencyDescentSpeed: 0.95,
+  landingSlowdownHeight: 0.45,
+  groundSnapHeight: 0.012,
+  rotorResponseRate: 5,
   // Prevent a background-tab resume from moving the drone several metres.
   maxElapsedSeconds: 0.25,
   // Fixed upper bound makes integration stable and nearly frame-rate invariant.
@@ -106,10 +204,89 @@ function clampUnit(value: number): number {
   return clamp(finiteOrZero(value), -1, 1);
 }
 
+function positiveRate(value: number): number {
+  return Math.max(0, finiteOrZero(value));
+}
+
+function isSpeedLevel(value: unknown): value is FlightSpeedLevel {
+  return value === "beginner" || value === "normal" || value === "high";
+}
+
 /**
- * Hard, symmetric and idempotent dead zone. Values at exactly the threshold
- * remain valid because the product requirement says values *below* 0.10 are
- * ignored. Smoothing removes the small discontinuity at the boundary.
+ * Resolves partial UI settings against safe defaults. The public step function
+ * accepts partial settings so callers do not need to copy physics constants.
+ */
+export function resolveFlightModelConfig(
+  overrides: Partial<FlightModelConfig> = {},
+): FlightModelConfig {
+  const merged = { ...DEFAULT_FLIGHT_CONFIG, ...overrides };
+  return {
+    ...merged,
+    deadZone: clamp(finiteOrZero(merged.deadZone), 0, 0.95),
+    expo: clamp(finiteOrZero(merged.expo), 0, 1),
+    sensitivity: clamp(finiteOrZero(merged.sensitivity), 0, 2),
+    speedLevel: isSpeedLevel(merged.speedLevel)
+      ? merged.speedLevel
+      : DEFAULT_SPEED_LEVEL,
+    ascentYawSuppressionThrottle: clampUnit(
+      merged.ascentYawSuppressionThrottle,
+    ),
+    ascentYawSuppressionLimit: clamp(
+      Math.abs(finiteOrZero(merged.ascentYawSuppressionLimit)),
+      0,
+      1,
+    ),
+    inputResponseRate: positiveRate(merged.inputResponseRate),
+    horizontalVelocityResponseRate: positiveRate(
+      merged.horizontalVelocityResponseRate,
+    ),
+    verticalVelocityResponseRate: positiveRate(
+      merged.verticalVelocityResponseRate,
+    ),
+    yawRateResponseRate: positiveRate(merged.yawRateResponseRate),
+    tiltResponseRate: positiveRate(merged.tiltResponseRate),
+    stabilizedHorizontalDecelerationRate: positiveRate(
+      merged.stabilizedHorizontalDecelerationRate,
+    ),
+    directHorizontalDecelerationRate: positiveRate(
+      merged.directHorizontalDecelerationRate,
+    ),
+    stabilizedVerticalDecelerationRate: positiveRate(
+      merged.stabilizedVerticalDecelerationRate,
+    ),
+    directVerticalDecelerationRate: positiveRate(
+      merged.directVerticalDecelerationRate,
+    ),
+    stabilizedYawDecelerationRate: positiveRate(
+      merged.stabilizedYawDecelerationRate,
+    ),
+    directYawDecelerationRate: positiveRate(
+      merged.directYawDecelerationRate,
+    ),
+    stabilizedTiltReturnRate: positiveRate(merged.stabilizedTiltReturnRate),
+    directTiltReturnRate: positiveRate(merged.directTiltReturnRate),
+    nonFlightHorizontalResponseRate: positiveRate(
+      merged.nonFlightHorizontalResponseRate,
+    ),
+    maxHorizontalSpeed: positiveRate(merged.maxHorizontalSpeed),
+    maxVerticalSpeed: positiveRate(merged.maxVerticalSpeed),
+    maxYawRate: positiveRate(merged.maxYawRate),
+    maxTilt: positiveRate(merged.maxTilt),
+    takeoffHeight: positiveRate(merged.takeoffHeight),
+    takeoffSpeed: positiveRate(merged.takeoffSpeed),
+    landingSpeed: positiveRate(merged.landingSpeed),
+    emergencyDescentSpeed: positiveRate(merged.emergencyDescentSpeed),
+    landingSlowdownHeight: positiveRate(merged.landingSlowdownHeight),
+    groundSnapHeight: positiveRate(merged.groundSnapHeight),
+    rotorResponseRate: positiveRate(merged.rotorResponseRate),
+    maxElapsedSeconds: positiveRate(merged.maxElapsedSeconds),
+    maxSubstepSeconds: positiveRate(merged.maxSubstepSeconds),
+  };
+}
+
+/**
+ * Legacy hard dead-zone helper retained for existing diagnostics/tests. New
+ * flight control uses `applyRescaledDeadZone` so full stick still reaches 1.
  */
 export function applyDeadZone(
   value: number,
@@ -120,6 +297,35 @@ export function applyDeadZone(
   return Math.abs(normalized) < threshold ? 0 : normalized;
 }
 
+/**
+ * Removes the center range and rescales the remainder back to 0..1. Thus a
+ * larger dead zone never reduces the maximum available output.
+ */
+export function applyRescaledDeadZone(
+  value: number,
+  deadZone = DEFAULT_DEAD_ZONE,
+): number {
+  const normalized = clampUnit(value);
+  const threshold = clamp(finiteOrZero(deadZone), 0, 0.95);
+  const magnitude = Math.abs(normalized);
+  if (magnitude <= threshold) return 0;
+  const rescaled = (magnitude - threshold) / (1 - threshold);
+  return Math.sign(normalized) * clamp(rescaled, 0, 1);
+}
+
+/** Linear-to-cubic expo blend; +/-1 remains +/-1 for every expo value. */
+export function applyExpoCurve(value: number, expo = DEFAULT_EXPO): number {
+  const normalized = clampUnit(value);
+  const amount = clamp(finiteOrZero(expo), 0, 1);
+  return clampUnit(
+    (1 - amount) * normalized + amount * normalized * normalized * normalized,
+  );
+}
+
+/**
+ * Compatibility conditioner used by earlier diagnostics. It intentionally
+ * keeps its historical hard-dead-zone behavior.
+ */
 export function conditionFlightInput(
   input: FlightControlInput,
   deadZone = DEFAULT_DEAD_ZONE,
@@ -130,6 +336,41 @@ export function conditionFlightInput(
     yaw: applyDeadZone(input.yaw, deadZone),
     pitch: applyDeadZone(input.pitch, deadZone),
     roll: applyDeadZone(input.roll, deadZone),
+  };
+}
+
+/**
+ * Student-facing control pipeline: dead zone -> full-range rescale -> expo ->
+ * sensitivity -> speed level. Accidental yaw suppression uses raw stick values
+ * so an intentional diagonal command remains available immediately.
+ */
+export function conditionFlightControls(
+  input: FlightControlInput,
+  settings: Partial<FlightModelConfig> = {},
+): FlightAxes {
+  if (input.active === false) return { ...ZERO_AXES };
+  const config = resolveFlightModelConfig(settings);
+  const rawThrottle = clampUnit(input.throttle);
+  const rawYaw = clampUnit(input.yaw);
+
+  const shape = (value: number): number =>
+    clampUnit(
+      applyExpoCurve(
+        applyRescaledDeadZone(value, config.deadZone),
+        config.expo,
+      ) * config.sensitivity,
+    );
+
+  const scale = FLIGHT_SPEED_SCALE[config.speedLevel];
+  const suppressAscentYaw =
+    rawThrottle >= config.ascentYawSuppressionThrottle &&
+    Math.abs(rawYaw) <= config.ascentYawSuppressionLimit;
+
+  return {
+    throttle: shape(rawThrottle) * scale,
+    yaw: (suppressAscentYaw ? 0 : shape(rawYaw)) * scale,
+    pitch: shape(input.pitch) * scale,
+    roll: shape(input.roll) * scale,
   };
 }
 
@@ -144,11 +385,38 @@ export function exponentialSmoothing(
   const rate = Math.max(0, finiteOrZero(responseRate));
   if (dt === 0 || rate === 0) return finiteOrZero(current);
   const alpha = 1 - Math.exp(-rate * dt);
-  return finiteOrZero(current) + (finiteOrZero(target) - finiteOrZero(current)) * alpha;
+  return (
+    finiteOrZero(current) +
+    (finiteOrZero(target) - finiteOrZero(current)) * alpha
+  );
+}
+
+function legacyModeForPhase(
+  phase: FlightPhase,
+  emergencyLatched: boolean,
+): FlightMode {
+  if (phase === FLIGHT_PHASE.TAKEOFF) return "taking_off";
+  if (phase === FLIGHT_PHASE.FLIGHT) return "flying";
+  if (phase === FLIGHT_PHASE.LANDING) return "landing";
+  if (phase === FLIGHT_PHASE.EMERGENCY || emergencyLatched) return "emergency";
+  return "landed";
+}
+
+function phaseFromLegacyMode(mode: FlightMode): FlightPhase {
+  if (mode === "taking_off") return FLIGHT_PHASE.TAKEOFF;
+  if (mode === "flying") return FLIGHT_PHASE.FLIGHT;
+  if (mode === "landing") return FLIGHT_PHASE.LANDING;
+  if (mode === "emergency") return FLIGHT_PHASE.EMERGENCY;
+  return FLIGHT_PHASE.READY;
+}
+
+function isFlightPhase(value: unknown): value is FlightPhase {
+  return Object.values(FLIGHT_PHASE).includes(value as FlightPhase);
 }
 
 export function createInitialFlightState(): FlightState {
   return {
+    phase: FLIGHT_PHASE.READY,
     mode: "landed",
     position: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
@@ -156,22 +424,60 @@ export function createInitialFlightState(): FlightState {
     yawRate: 0,
     tilt: { pitch: 0, roll: 0 },
     smoothedInput: { ...ZERO_AXES },
+    takeoffYaw: 0,
+    rotorSpeed: 0,
+    emergencyLatched: false,
+  };
+}
+
+function normalizeFlightState(state: FlightState): FlightState {
+  let phase = isFlightPhase(state.phase)
+    ? state.phase
+    : phaseFromLegacyMode(state.mode);
+  const emergencyLatched = Boolean(state.emergencyLatched);
+  const expectedMode = legacyModeForPhase(phase, emergencyLatched);
+
+  // Supports older callers/tests that create a state by overriding `mode`.
+  // A completed, latched emergency intentionally has phase STOP + mode emergency.
+  if (
+    state.mode !== expectedMode &&
+    !(phase === FLIGHT_PHASE.STOP && emergencyLatched)
+  ) {
+    phase = phaseFromLegacyMode(state.mode);
+  }
+
+  return {
+    ...state,
+    phase,
+    mode: legacyModeForPhase(phase, emergencyLatched),
+    position: { ...state.position },
+    velocity: { ...state.velocity },
+    yaw: finiteOrZero(state.yaw),
+    yawRate: finiteOrZero(state.yawRate),
+    tilt: { ...state.tilt },
+    smoothedInput: { ...state.smoothedInput },
+    takeoffYaw: Number.isFinite(state.takeoffYaw)
+      ? state.takeoffYaw
+      : finiteOrZero(state.yaw),
+    rotorSpeed: clamp(finiteOrZero(state.rotorSpeed), 0, 1),
+    emergencyLatched,
   };
 }
 
 function cloneFlightState(state: FlightState): FlightState {
-  return {
-    ...state,
-    position: { ...state.position },
-    velocity: { ...state.velocity },
-    tilt: { ...state.tilt },
-    smoothedInput: { ...state.smoothedInput },
-  };
+  return normalizeFlightState(state);
+}
+
+function withPhase(state: FlightState, phase: FlightPhase): FlightState {
+  const next = cloneFlightState(state);
+  next.phase = phase;
+  next.mode = legacyModeForPhase(phase, next.emergencyLatched);
+  return next;
 }
 
 /**
  * Immediately removes residual input and motion without teleporting or
- * changing the current flight mode. Intended for controller disconnect/stale
+ * changing the current flight phase. Intended for controller disconnect/stale
  * input handling, where an exponential coast would otherwise feel like drift.
  */
 export function neutralizeFlightMotion(state: FlightState): FlightState {
@@ -184,36 +490,70 @@ export function neutralizeFlightMotion(state: FlightState): FlightState {
   };
 }
 
-function stoppedState(state: FlightState, mode: FlightMode): FlightState {
-  return {
-    ...neutralizeFlightMotion(state),
-    mode,
-  };
+function stoppedState(
+  state: FlightState,
+  phase: FlightPhase,
+): FlightState {
+  return withPhase(neutralizeFlightMotion(state), phase);
 }
 
 export function applyFlightCommand(
   state: FlightState,
   command: FlightCommand | null | undefined,
 ): FlightState {
-  if (!command) return cloneFlightState(state);
+  const current = cloneFlightState(state);
+  if (!command) return current;
   if (command === "reset") return createInitialFlightState();
-  if (command === "emergency") {
-    // Emergency is latched. Horizontal motion and yaw stop immediately; the
-    // subsequent simulation steps perform a controlled rapid descent.
-    return stoppedState(state, "emergency");
-  }
-  if (state.mode === "emergency") return cloneFlightState(state);
 
-  if (command === "takeoff" && state.mode === "landed") {
-    return { ...cloneFlightState(state), mode: "taking_off" };
+  if (command === "emergency") {
+    const emergency = stoppedState(current, FLIGHT_PHASE.EMERGENCY);
+    emergency.emergencyLatched = true;
+    emergency.mode = "emergency";
+    if (emergency.position.y <= 0) {
+      emergency.position.y = 0;
+      emergency.phase = FLIGHT_PHASE.STOP;
+    }
+    return emergency;
   }
+
+  if (current.emergencyLatched) return current;
+
+  if (
+    command === "start" &&
+    (current.phase === FLIGHT_PHASE.READY ||
+      current.phase === FLIGHT_PHASE.STOP)
+  ) {
+    return withPhase(current, FLIGHT_PHASE.START);
+  }
+
+  if (
+    command === "takeoff" &&
+    current.phase === FLIGHT_PHASE.START
+  ) {
+    const takeoff = withPhase(current, FLIGHT_PHASE.TAKEOFF);
+    takeoff.takeoffYaw = current.yaw;
+    return takeoff;
+  }
+
   if (
     command === "land" &&
-    (state.mode === "taking_off" || state.mode === "flying")
+    (current.phase === FLIGHT_PHASE.TAKEOFF ||
+      current.phase === FLIGHT_PHASE.FLIGHT)
   ) {
-    return { ...cloneFlightState(state), mode: "landing" };
+    return withPhase(current, FLIGHT_PHASE.LANDING);
   }
-  return cloneFlightState(state);
+
+  if (
+    command === "stop" &&
+    current.position.y <= 0 &&
+    (current.phase === FLIGHT_PHASE.READY ||
+      current.phase === FLIGHT_PHASE.START ||
+      current.phase === FLIGHT_PHASE.STOP)
+  ) {
+    return stoppedState(current, FLIGHT_PHASE.STOP);
+  }
+
+  return current;
 }
 
 function wrapYaw(yaw: number): number {
@@ -228,11 +568,48 @@ function smoothAxes(
   dt: number,
 ): FlightAxes {
   return {
-    throttle: exponentialSmoothing(current.throttle, target.throttle, responseRate, dt),
+    throttle: exponentialSmoothing(
+      current.throttle,
+      target.throttle,
+      responseRate,
+      dt,
+    ),
     yaw: exponentialSmoothing(current.yaw, target.yaw, responseRate, dt),
     pitch: exponentialSmoothing(current.pitch, target.pitch, responseRate, dt),
     roll: exponentialSmoothing(current.roll, target.roll, responseRate, dt),
   };
+}
+
+function isNearZero(value: number): boolean {
+  return Math.abs(value) < 1e-8;
+}
+
+function snapSettledVelocity(
+  value: number,
+  target: number,
+  stabilization: boolean,
+): number {
+  return stabilization && isNearZero(target) && Math.abs(value) < 0.004
+    ? 0
+    : value;
+}
+
+function targetRotorSpeed(phase: FlightPhase): number {
+  if (phase === FLIGHT_PHASE.START) return 0.62;
+  if (phase === FLIGHT_PHASE.TAKEOFF || phase === FLIGHT_PHASE.FLIGHT) return 1;
+  if (phase === FLIGHT_PHASE.LANDING) return 0.76;
+  if (phase === FLIGHT_PHASE.EMERGENCY) return 0.8;
+  return 0;
+}
+
+function descentSpeedForHeight(
+  height: number,
+  maximumSpeed: number,
+  slowdownHeight: number,
+): number {
+  if (slowdownHeight <= 0) return maximumSpeed;
+  const nearGroundScale = clamp(height / slowdownHeight, 0.28, 1);
+  return maximumSpeed * nearGroundScale;
 }
 
 function stepFlightSubstate(
@@ -241,29 +618,44 @@ function stepFlightSubstate(
   dt: number,
   config: FlightModelConfig,
 ): FlightState {
-  const next = cloneFlightState(state);
-  const acceptsManualControl = state.mode === "flying";
+  const current = cloneFlightState(state);
+  const next = cloneFlightState(current);
+  const acceptsManualControl = current.phase === FLIGHT_PHASE.FLIGHT;
   const desiredInput = acceptsManualControl ? targetInput : ZERO_AXES;
   next.smoothedInput = smoothAxes(
-    state.smoothedInput,
+    current.smoothedInput,
     desiredInput,
     config.inputResponseRate,
     dt,
   );
 
   let targetVerticalSpeed = 0;
-  if (state.mode === "taking_off") targetVerticalSpeed = config.takeoffSpeed;
-  else if (state.mode === "landing") targetVerticalSpeed = -config.landingSpeed;
-  else if (state.mode === "emergency") {
-    targetVerticalSpeed = -config.emergencyDescentSpeed;
+  if (current.phase === FLIGHT_PHASE.TAKEOFF) {
+    targetVerticalSpeed = config.takeoffSpeed;
+  } else if (current.phase === FLIGHT_PHASE.LANDING) {
+    targetVerticalSpeed = -descentSpeedForHeight(
+      current.position.y,
+      config.landingSpeed,
+      config.landingSlowdownHeight,
+    );
+  } else if (current.phase === FLIGHT_PHASE.EMERGENCY) {
+    targetVerticalSpeed = -descentSpeedForHeight(
+      current.position.y,
+      config.emergencyDescentSpeed,
+      config.landingSlowdownHeight,
+    );
   } else if (acceptsManualControl) {
-    targetVerticalSpeed = next.smoothedInput.throttle * config.maxVerticalSpeed;
+    targetVerticalSpeed =
+      next.smoothedInput.throttle * config.maxVerticalSpeed;
   }
 
-  const forwardX = Math.sin(state.yaw);
-  const forwardZ = Math.cos(state.yaw);
-  const rightX = Math.cos(state.yaw);
-  const rightZ = -Math.sin(state.yaw);
+  // Headless mode deliberately affects translation only; yaw still rotates the
+  // aircraft and the red front marker normally.
+  const movementYaw = config.headless ? current.takeoffYaw : current.yaw;
+  const forwardX = Math.sin(movementYaw);
+  const forwardZ = Math.cos(movementYaw);
+  const rightX = Math.cos(movementYaw);
+  const rightZ = -Math.sin(movementYaw);
   const targetForwardSpeed = acceptsManualControl
     ? next.smoothedInput.pitch * config.maxHorizontalSpeed
     : 0;
@@ -278,103 +670,190 @@ function stepFlightSubstate(
     ? next.smoothedInput.yaw * config.maxYawRate
     : 0;
 
+  // Deceleration mode is selected from the user's current stick intent rather
+  // than the already-smoothed target. Otherwise an exponentially decaying
+  // target would postpone stabilization for several seconds after release.
+  const hasHorizontalCommand =
+    !isNearZero(desiredInput.pitch) || !isNearZero(desiredInput.roll);
+  const hasVerticalCommand = !isNearZero(desiredInput.throttle);
+  const hasYawCommand = !isNearZero(desiredInput.yaw);
+  const horizontalResponseRate = acceptsManualControl
+    ? hasHorizontalCommand
+      ? config.horizontalVelocityResponseRate
+      : config.stabilization
+        ? config.stabilizedHorizontalDecelerationRate
+        : config.directHorizontalDecelerationRate
+    : config.nonFlightHorizontalResponseRate;
+  const verticalResponseRate =
+    acceptsManualControl && !hasVerticalCommand
+      ? config.stabilization
+        ? config.stabilizedVerticalDecelerationRate
+        : config.directVerticalDecelerationRate
+      : config.verticalVelocityResponseRate;
+  const yawResponseRate =
+    acceptsManualControl && !hasYawCommand
+      ? config.stabilization
+        ? config.stabilizedYawDecelerationRate
+        : config.directYawDecelerationRate
+      : config.yawRateResponseRate;
+
   next.velocity = {
     x: exponentialSmoothing(
-      state.velocity.x,
+      current.velocity.x,
       targetVelocityX,
-      config.horizontalVelocityResponseRate,
+      horizontalResponseRate,
       dt,
     ),
     y: exponentialSmoothing(
-      state.velocity.y,
+      current.velocity.y,
       targetVerticalSpeed,
-      config.verticalVelocityResponseRate,
+      verticalResponseRate,
       dt,
     ),
     z: exponentialSmoothing(
-      state.velocity.z,
+      current.velocity.z,
       targetVelocityZ,
-      config.horizontalVelocityResponseRate,
+      horizontalResponseRate,
       dt,
     ),
   };
   next.yawRate = exponentialSmoothing(
-    state.yawRate,
+    current.yawRate,
     targetYawRate,
-    config.yawRateResponseRate,
+    yawResponseRate,
     dt,
   );
 
+  next.velocity.x = snapSettledVelocity(
+    next.velocity.x,
+    targetVelocityX,
+    config.stabilization,
+  );
+  next.velocity.y = snapSettledVelocity(
+    next.velocity.y,
+    targetVerticalSpeed,
+    config.stabilization,
+  );
+  next.velocity.z = snapSettledVelocity(
+    next.velocity.z,
+    targetVelocityZ,
+    config.stabilization,
+  );
+  next.yawRate = snapSettledVelocity(
+    next.yawRate,
+    targetYawRate,
+    config.stabilization,
+  );
+
   // Trapezoidal integration is stable while remaining inexpensive enough for
-  // requestAnimationFrame. Fixed-size internal substeps make the result nearly
-  // independent of display refresh rate.
+  // requestAnimationFrame. Fixed-size substeps reduce refresh-rate dependence.
   next.position = {
-    x: state.position.x + ((state.velocity.x + next.velocity.x) / 2) * dt,
-    y: state.position.y + ((state.velocity.y + next.velocity.y) / 2) * dt,
-    z: state.position.z + ((state.velocity.z + next.velocity.z) / 2) * dt,
+    x: current.position.x + ((current.velocity.x + next.velocity.x) / 2) * dt,
+    y: current.position.y + ((current.velocity.y + next.velocity.y) / 2) * dt,
+    z: current.position.z + ((current.velocity.z + next.velocity.z) / 2) * dt,
   };
   next.yaw = wrapYaw(
-    state.yaw + ((state.yawRate + next.yawRate) / 2) * dt,
+    current.yaw + ((current.yawRate + next.yawRate) / 2) * dt,
   );
+
+  const targetPitchTilt = acceptsManualControl
+    ? config.stabilization && isNearZero(desiredInput.pitch)
+      ? 0
+      : next.smoothedInput.pitch * config.maxTilt
+    : 0;
+  const targetRollTilt = acceptsManualControl
+    ? config.stabilization && isNearZero(desiredInput.roll)
+      ? 0
+      : next.smoothedInput.roll * config.maxTilt
+    : 0;
+  const tiltIsReturning =
+    !acceptsManualControl ||
+    (isNearZero(desiredInput.pitch) && isNearZero(desiredInput.roll));
+  const tiltRate = tiltIsReturning
+    ? config.stabilization
+      ? config.stabilizedTiltReturnRate
+      : config.directTiltReturnRate
+    : config.tiltResponseRate;
   next.tilt = {
     pitch: exponentialSmoothing(
-      state.tilt.pitch,
-      acceptsManualControl ? next.smoothedInput.pitch * config.maxTilt : 0,
-      config.tiltResponseRate,
+      current.tilt.pitch,
+      targetPitchTilt,
+      tiltRate,
       dt,
     ),
     roll: exponentialSmoothing(
-      state.tilt.roll,
-      acceptsManualControl ? next.smoothedInput.roll * config.maxTilt : 0,
-      config.tiltResponseRate,
+      current.tilt.roll,
+      targetRollTilt,
+      tiltRate,
       dt,
     ),
   };
+  next.rotorSpeed = clamp(
+    exponentialSmoothing(
+      current.rotorSpeed,
+      targetRotorSpeed(current.phase),
+      config.rotorResponseRate,
+      dt,
+    ),
+    0,
+    1,
+  );
 
-  if (state.mode === "taking_off" && next.position.y >= config.takeoffHeight) {
+  if (
+    current.phase === FLIGHT_PHASE.TAKEOFF &&
+    next.position.y >= config.takeoffHeight
+  ) {
     next.position.y = config.takeoffHeight;
     next.velocity.y = 0;
-    next.mode = "flying";
+    return withPhase(next, FLIGHT_PHASE.FLIGHT);
   }
 
-  if (next.position.y <= 0) {
+  const descending =
+    current.phase === FLIGHT_PHASE.LANDING ||
+    current.phase === FLIGHT_PHASE.EMERGENCY;
+  const touchesGround =
+    next.position.y <= 0 ||
+    (descending &&
+      next.position.y <= config.groundSnapHeight &&
+      next.velocity.y <= 0);
+
+  if (touchesGround) {
     next.position.y = 0;
-    if (state.mode === "landing" || state.mode === "flying") {
-      return stoppedState(next, "landed");
+    if (
+      descending ||
+      current.phase === FLIGHT_PHASE.FLIGHT ||
+      current.phase === FLIGHT_PHASE.STOP
+    ) {
+      return stoppedState(next, FLIGHT_PHASE.STOP);
     }
-    if (state.mode === "emergency") {
-      return stoppedState(next, "emergency");
-    }
-    if (state.mode === "landed") return stoppedState(next, "landed");
   }
 
+  next.mode = legacyModeForPhase(next.phase, next.emergencyLatched);
   return next;
 }
 
 /**
  * Advances one deterministic simulator frame without mutating its arguments.
- * Controller contract: throttle +up, yaw +clockwise, pitch +forward, roll
- * +right. A command is consumed once by this call.
+ * A command is consumed once by this call. Controller contract: throttle +up,
+ * yaw +clockwise, pitch +forward, roll +aircraft-right.
  */
 export function stepFlightState(
   state: FlightState,
   input: FlightControlInput,
   dtSeconds: number,
-  config: FlightModelConfig = DEFAULT_FLIGHT_CONFIG,
+  settings: Partial<FlightModelConfig> = {},
 ): FlightState {
+  const config = resolveFlightModelConfig(settings);
   let next = applyFlightCommand(state, input.command);
   const elapsed = clamp(
     finiteOrZero(dtSeconds),
     0,
-    Math.max(0, finiteOrZero(config.maxElapsedSeconds)),
+    config.maxElapsedSeconds,
   );
   if (elapsed === 0) return next;
 
-  const targetInput = conditionFlightInput(input, config.deadZone);
-  const maximumSubstep = Math.max(
-    1 / 1000,
-    finiteOrZero(config.maxSubstepSeconds),
-  );
+  const targetInput = conditionFlightControls(input, config);
+  const maximumSubstep = Math.max(1 / 1000, config.maxSubstepSeconds);
   const substepCount = Math.max(1, Math.ceil(elapsed / maximumSubstep));
   const substep = elapsed / substepCount;
   for (let index = 0; index < substepCount; index += 1) {

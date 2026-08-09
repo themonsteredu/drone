@@ -1,11 +1,13 @@
 import type { DetectionContext, DeviceInfo, AdapterMatch } from "../types";
 import { ByrobotSerialBaseAdapter } from "./byrobot-serial-base";
+import { SMART_CONTROLLER_PROFILE } from "../profiles";
 
 /**
  * Placeholder: no official Smart Controller USB descriptor/model signature has
  * been confirmed. Payload mapping intentionally remains unimplemented.
  */
 export class SmartControllerAdapter extends ByrobotSerialBaseAdapter {
+  override readonly controllerProfile = SMART_CONTROLLER_PROFILE;
   constructor(port: BrowserSerialPort, baudRate: number) {
     super(
       port,

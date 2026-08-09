@@ -331,10 +331,20 @@ test("does not treat an out-of-range sample as a valid movement baseline", () =>
 
   tracker.observe(packet(127, 1));
   assert.equal(tracker.snapshot().evidence.joystickDecoded, false);
+  assert.equal(tracker.snapshot().latestAcceptedJoystickAt, null);
   tracker.observe(packet(0, 2));
   assert.equal(tracker.snapshot().evidence.joystickChangedEver, false);
+  assert.equal(tracker.snapshot().latestAcceptedJoystickAt, 2);
   tracker.observe(packet(10, 3));
   assert.equal(tracker.snapshot().evidence.joystickChangedEver, true);
+  assert.equal(tracker.snapshot().latestAcceptedJoystickAt, 3);
+  tracker.observe(packet(127, 4));
+  assert.equal(tracker.snapshot().latestJoystick.receivedAt, 4);
+  assert.equal(
+    tracker.snapshot().latestAcceptedJoystickAt,
+    3,
+    "an invalid sample must not refresh the accepted ControllerState input",
+  );
 });
 
 test("decodes Button uint16 little-endian, event, and session input evidence", () => {

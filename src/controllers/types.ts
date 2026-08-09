@@ -1,3 +1,5 @@
+import type { ControllerProfile } from "./profiles";
+
 export type ConnectionMethod = "gamepad" | "serial" | "hid" | "usb";
 
 export type DiagnosticStatus =
@@ -114,6 +116,8 @@ export interface ControllerAdapter {
   readonly id: string;
   readonly name: string;
   readonly connectionMethod: ConnectionMethod;
+  /** Optional adapter-owned defaults; consumers must still enforce its guards. */
+  readonly controllerProfile?: ControllerProfile;
   matches(deviceInfo: DeviceInfo, context?: DetectionContext): AdapterMatch;
   connect(): Promise<void>;
   disconnect(): Promise<void>;

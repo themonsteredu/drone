@@ -158,8 +158,13 @@ test("fixed internal substeps make a 0.2 second update frame-rate stable", () =>
 
 test("takeoff and landing form a deterministic safe state machine", () => {
   const initial = createInitialFlightState();
-  const takingOff = stepFlightState(
+  const started = stepFlightState(
     initial,
+    { ...NEUTRAL, command: "start" },
+    0,
+  );
+  const takingOff = stepFlightState(
+    started,
     { ...NEUTRAL, command: "takeoff" },
     0,
   );

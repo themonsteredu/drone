@@ -3,9 +3,18 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import {
+  createControllerGestureRuntime,
+  observeProfileButtonGestures,
+  observeProfileInputChords,
+  resetControllerGestureRuntime,
+  type ControllerOperation,
+  type ControllerProfile,
+} from "../controllers/profiles";
 import type {
   ControllerButtonTransition,
   ControllerState,
@@ -19,16 +28,22 @@ import {
   type ControllerButtonMappings,
   type MappableButtonAction,
 } from "../simulator/button-mapping";
+import { createDroneTransform } from "../simulator/drone-transform";
 import {
-  applyFlightCommand,
-  createInitialFlightState,
-  neutralizeFlightMotion,
-  stepFlightState,
+  FlightController,
+  INPUT_STALE_AFTER_MS,
+  getFlightActionAvailability,
+} from "../simulator/flight-controller";
+import {
+  FLIGHT_PHASE,
   type FlightCommand,
-  type FlightControlInput,
-  type FlightMode,
+  type FlightPhase,
   type FlightState,
 } from "../simulator/flight-model";
+import type { SimulatorPreferences } from "../simulator/settings";
+import { DroneVisual } from "./drone-visual";
+import { FlightSettingsPanel } from "./flight-settings-panel";
+import type { SimulatorPreferencesUpdater } from "./use-simulator-preferences";
 
 interface DroneSimulatorProps {
   controllerState: ControllerState;
@@ -36,251 +51,98 @@ interface DroneSimulatorProps {
   sourceSessionKey: string | null;
   mappingSourceId: string | null;
   inputUpdatedAt: number | null;
+  controllerProfile: ControllerProfile;
+  preferences: SimulatorPreferences;
+  axisCount: number;
+  onUpdatePreferences: (update: SimulatorPreferencesUpdater) => void;
+  onResetPreferences: () => void;
 }
 
-interface StoredButtonMappings {
-  version: 1;
+interface StoredButtonMappingsV2 {
+  version: 2;
   mappings: ControllerButtonMappings;
 }
 
-const BUTTON_MAPPING_STORAGE_KEY = "byrobot-drone-button-mappings-v1";
-const INPUT_STALE_AFTER_MS = 500;
-const ZERO_INPUT: FlightControlInput = {
-  throttle: 0,
-  yaw: 0,
-  pitch: 0,
-  roll: 0,
-  active: false,
+const BUTTON_MAPPING_STORAGE_KEY = "byrobot-drone-button-mappings-v2";
+const LEGACY_BUTTON_MAPPING_STORAGE_KEY = "byrobot-drone-button-mappings-v1";
+
+const PHASE_LABEL: Readonly<Record<FlightPhase, string>> = {
+  [FLIGHT_PHASE.READY]: "대기",
+  [FLIGHT_PHASE.START]: "시동 완료",
+  [FLIGHT_PHASE.TAKEOFF]: "이륙 중",
+  [FLIGHT_PHASE.FLIGHT]: "비행 가능",
+  [FLIGHT_PHASE.LANDING]: "착륙 중",
+  [FLIGHT_PHASE.STOP]: "착륙 완료",
+  [FLIGHT_PHASE.EMERGENCY]: "긴급 안전 착륙 중",
 };
 
-const MODE_LABEL: Record<FlightMode, string> = {
-  landed: "착륙 상태",
-  taking_off: "이륙 중",
-  flying: "비행 중",
-  landing: "착륙 중",
-  emergency: "긴급 정지",
-};
-
-const ACTION_LABEL: Record<MappableButtonAction, string> = {
+const ACTION_LABEL: Readonly<Record<MappableButtonAction, string>> = {
+  start: "시동",
   takeoff: "이륙",
   land: "착륙",
-  emergency: "긴급 정지",
+  emergency: "긴급 기능",
 };
 
-function cloneFlightState(state: FlightState): FlightState {
-  return {
-    ...state,
-    position: { ...state.position },
-    velocity: { ...state.velocity },
-    tilt: { ...state.tilt },
-    smoothedInput: { ...state.smoothedInput },
-  };
+const ACTION_COMMAND: Readonly<Record<MappableButtonAction, FlightCommand>> = {
+  start: "start",
+  takeoff: "takeoff",
+  land: "land",
+  emergency: "emergency",
+};
+
+const PROFILE_OPERATION_COMMAND = {
+  start: "start",
+  takeoff: "takeoff",
+  landing: "land",
+  emergency: "emergency",
+} as const satisfies Readonly<Record<ControllerOperation, FlightCommand>>;
+
+function validBinding(value: unknown): boolean {
+  return (
+    value === null ||
+    (typeof value === "object" &&
+      value !== null &&
+      "sourceId" in value &&
+      "buttonId" in value &&
+      typeof value.sourceId === "string" &&
+      typeof value.buttonId === "string")
+  );
 }
 
-function validStoredMappings(value: unknown): value is StoredButtonMappings {
-  if (!value || typeof value !== "object" || !("version" in value) || !("mappings" in value)) {
-    return false;
+function parseStoredMappings(value: unknown): ControllerButtonMappings | null {
+  if (!value || typeof value !== "object" || !("mappings" in value)) {
+    return null;
   }
-  const candidate = value as StoredButtonMappings;
-  if (candidate.version !== 1 || !candidate.mappings) return false;
-  return ["takeoff", "land", "emergency"].every((action) => {
-    const binding = candidate.mappings[action as MappableButtonAction];
-    return (
-      binding === null ||
-      (typeof binding?.sourceId === "string" && typeof binding.buttonId === "string")
-    );
-  });
+  const candidate = value as {
+    version?: unknown;
+    mappings?: Partial<ControllerButtonMappings>;
+  };
+  if (candidate.version !== 1 && candidate.version !== 2) return null;
+  const mappings = candidate.mappings;
+  if (
+    !mappings ||
+    !validBinding(mappings.takeoff) ||
+    !validBinding(mappings.land) ||
+    !validBinding(mappings.emergency) ||
+    (candidate.version === 2 && !validBinding(mappings.start))
+  ) {
+    return null;
+  }
+  return {
+    start: candidate.version === 2 ? (mappings.start ?? null) : null,
+    takeoff: mappings.takeoff ?? null,
+    land: mappings.land ?? null,
+    emergency: mappings.emergency ?? null,
+  };
 }
 
 function displayButtonId(buttonId: string | undefined): string {
   if (!buttonId) return "미설정";
   const bitMatch = /^button_bit_(\d+)$/.exec(buttonId);
-  if (bitMatch) return `${Number(bitMatch[1]) + 1}번`;
+  if (bitMatch) return `${Number(bitMatch[1]) + 1}번 비트`;
   const gamepadMatch = /^button_(\d+)$/.exec(buttonId);
   if (gamepadMatch) return `${Number(gamepadMatch[1])}번`;
   return buttonId;
-}
-
-function projectPoint(
-  x: number,
-  y: number,
-  z: number,
-  originX: number,
-  originY: number,
-  scale: number,
-): [number, number] {
-  return [
-    originX + (x - z) * scale,
-    originY + (x + z) * scale * 0.48 - y * scale * 1.35,
-  ];
-}
-
-function drawDroneScene(
-  canvas: HTMLCanvasElement,
-  state: FlightState,
-  time: number,
-  reduceMotion: boolean,
-): void {
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const width = Math.round(rect.width * dpr);
-  const height = Math.round(rect.height * dpr);
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const w = rect.width;
-  const h = rect.height;
-  context.clearRect(0, 0, w, h);
-
-  const sky = context.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#eaf5ff");
-  sky.addColorStop(0.58, "#f8fbff");
-  sky.addColorStop(1, "#e3edf4");
-  context.fillStyle = sky;
-  context.fillRect(0, 0, w, h);
-
-  const scale = Math.max(22, Math.min(42, w / 20));
-  // The single training drone remains in view while the grid moves below it.
-  const cameraX = state.position.x;
-  const cameraZ = state.position.z;
-  const originX = w * 0.5;
-  const originY = h * 0.68;
-  context.lineWidth = 1;
-  for (let index = -8; index <= 8; index += 1) {
-    const major = index % 4 === 0;
-    context.strokeStyle = major ? "rgba(70, 122, 162, 0.23)" : "rgba(70, 122, 162, 0.11)";
-    context.beginPath();
-    let point = projectPoint(index - cameraX, 0, -8 - cameraZ, originX, originY, scale);
-    context.moveTo(point[0], point[1]);
-    point = projectPoint(index - cameraX, 0, 8 - cameraZ, originX, originY, scale);
-    context.lineTo(point[0], point[1]);
-    context.stroke();
-
-    context.beginPath();
-    point = projectPoint(-8 - cameraX, 0, index - cameraZ, originX, originY, scale);
-    context.moveTo(point[0], point[1]);
-    point = projectPoint(8 - cameraX, 0, index - cameraZ, originX, originY, scale);
-    context.lineTo(point[0], point[1]);
-    context.stroke();
-  }
-
-  const ground = projectPoint(
-    state.position.x - cameraX,
-    0,
-    state.position.z - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
-  const center = projectPoint(
-    state.position.x - cameraX,
-    state.position.y + 0.32,
-    state.position.z - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
-
-  const shadowScale = Math.max(0.28, 1 - state.position.y * 0.08);
-  context.save();
-  context.translate(ground[0], ground[1] + 6);
-  context.scale(1, 0.42);
-  context.beginPath();
-  context.arc(0, 0, 34 * shadowScale, 0, Math.PI * 2);
-  context.fillStyle = `rgba(39, 57, 70, ${Math.max(0.08, 0.2 - state.position.y * 0.018)})`;
-  context.fill();
-  context.restore();
-
-  const localRotors: Array<[number, number]> = [
-    [-0.58, -0.58],
-    [0.58, -0.58],
-    [0.58, 0.58],
-    [-0.58, 0.58],
-  ];
-  const cos = Math.cos(state.yaw);
-  const sin = Math.sin(state.yaw);
-  const rotorPoints = localRotors.map(([localX, localZ]) => {
-    const worldX = state.position.x + localX * cos + localZ * sin;
-    const worldZ = state.position.z - localX * sin + localZ * cos;
-    const tiltHeight = localZ * state.tilt.pitch - localX * state.tilt.roll;
-    return projectPoint(
-      worldX - cameraX,
-      state.position.y + 0.32 + tiltHeight,
-      worldZ - cameraZ,
-      originX,
-      originY,
-      scale,
-    );
-  });
-
-  context.lineCap = "round";
-  context.lineWidth = 9;
-  context.strokeStyle = "#26384d";
-  for (const point of rotorPoints) {
-    context.beginPath();
-    context.moveTo(center[0], center[1]);
-    context.lineTo(point[0], point[1]);
-    context.stroke();
-  }
-
-  const bladeAngle = reduceMotion ? 0 : time * 0.018;
-  rotorPoints.forEach((point, index) => {
-    context.save();
-    context.translate(point[0], point[1]);
-    context.rotate(bladeAngle * (index % 2 === 0 ? 1 : -1));
-    context.strokeStyle = "rgba(28, 51, 72, 0.48)";
-    context.lineWidth = 4;
-    context.beginPath();
-    context.moveTo(-23, 0);
-    context.lineTo(23, 0);
-    context.moveTo(0, -7);
-    context.lineTo(0, 7);
-    context.stroke();
-    context.fillStyle = index < 2 ? "#ff8d48" : "#3f7cff";
-    context.beginPath();
-    context.arc(0, 0, 7, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  });
-
-  context.save();
-  context.translate(center[0], center[1]);
-  context.rotate(-state.tilt.roll * 0.65);
-  context.fillStyle = "#ffffff";
-  context.strokeStyle = "#1e3146";
-  context.lineWidth = 3;
-  context.beginPath();
-  context.roundRect(-26, -16, 52, 32, 12);
-  context.fill();
-  context.stroke();
-  context.fillStyle = "#306eff";
-  context.beginPath();
-  context.roundRect(-13, -8, 26, 16, 6);
-  context.fill();
-  context.restore();
-
-  const noseWorldX = state.position.x + Math.sin(state.yaw) * 0.78;
-  const noseWorldZ = state.position.z + Math.cos(state.yaw) * 0.78;
-  const nose = projectPoint(
-    noseWorldX - cameraX,
-    state.position.y + 0.34,
-    noseWorldZ - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
-  context.strokeStyle = "#ff6c3b";
-  context.lineWidth = 4;
-  context.beginPath();
-  context.moveTo(center[0], center[1]);
-  context.lineTo(nose[0], nose[1]);
-  context.stroke();
 }
 
 function buttonsFromTransitions(
@@ -295,47 +157,71 @@ function buttonsFromTransitions(
   return next;
 }
 
+function cloneFlightState(state: FlightState): FlightState {
+  return {
+    ...state,
+    position: { ...state.position },
+    velocity: { ...state.velocity },
+    tilt: { ...state.tilt },
+    smoothedInput: { ...state.smoothedInput },
+  };
+}
+
 export function DroneSimulator({
   controllerState,
   controlsEnabled,
   sourceSessionKey,
   mappingSourceId,
   inputUpdatedAt,
+  controllerProfile,
+  preferences,
+  axisCount,
+  onUpdatePreferences,
+  onResetPreferences,
 }: DroneSimulatorProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const flightStateRef = useRef<FlightState>(createInitialFlightState());
-  const inputRef = useRef<FlightControlInput>(ZERO_INPUT);
-  const inputUpdatedAtRef = useRef<number | null>(inputUpdatedAt);
-  const controlsEnabledRef = useRef(controlsEnabled);
-  const inputWasFreshRef = useRef(false);
-  const reduceMotionRef = useRef(false);
-  const previousControlsEnabledRef = useRef(false);
-  const actionControlsEnabledRef = useRef(false);
+  const [flightController] = useState(() => new FlightController(preferences));
   const buttonSnapshotRef = useRef<Record<string, boolean>>({});
+  const controllerStateRef = useRef(controllerState);
   const lastButtonSequenceRef = useRef(0);
   const captureRef = useRef<ButtonCaptureState | null>(null);
-  const mappingsRef = useRef<ControllerButtonMappings>(createEmptyButtonMappings());
-  const [telemetry, setTelemetry] = useState<FlightState>(() => createInitialFlightState());
-  const [mappings, setMappings] = useState<ControllerButtonMappings>(() =>
+  const mappingsRef = useRef<ControllerButtonMappings>(
     createEmptyButtonMappings(),
   );
+  const profileGestureRuntimeRef = useRef(createControllerGestureRuntime());
+  const [telemetry, setTelemetry] = useState<FlightState>(() =>
+    flightController.getState(),
+  );
+  const [mappings, setMappings] = useState<ControllerButtonMappings>(
+    createEmptyButtonMappings,
+  );
   const [capture, setCapture] = useState<ButtonCaptureState | null>(null);
-  const [mappingMessage, setMappingMessage] = useState("기능을 선택한 뒤 조종기 버튼을 눌러 설정할 수 있습니다.");
+  const [mappingMessage, setMappingMessage] = useState(
+    "기능을 선택한 뒤 조종기 버튼을 눌러 설정할 수 있습니다.",
+  );
   const [storageReady, setStorageReady] = useState(false);
+
+  const profileHasDefaultButtons = useMemo(
+    () =>
+      Object.values(controllerProfile.defaultOperationGestures).some(Boolean),
+    [controllerProfile],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const stored = window.localStorage.getItem(BUTTON_MAPPING_STORAGE_KEY);
-        if (stored) {
-          const parsed: unknown = JSON.parse(stored);
-          if (validStoredMappings(parsed)) {
-            setMappings(parsed.mappings);
-            mappingsRef.current = parsed.mappings;
-          }
+        const current = window.localStorage.getItem(BUTTON_MAPPING_STORAGE_KEY);
+        const legacy = window.localStorage.getItem(
+          LEGACY_BUTTON_MAPPING_STORAGE_KEY,
+        );
+        const parsed = parseStoredMappings(
+          JSON.parse(current ?? legacy ?? "null"),
+        );
+        if (parsed) {
+          setMappings(parsed);
+          mappingsRef.current = parsed;
         }
       } catch {
-        // A blocked or malformed storage entry must not prevent flight controls.
+        // Optional persistence must never block controller input.
       } finally {
         setStorageReady(true);
       }
@@ -347,61 +233,70 @@ export function DroneSimulator({
     mappingsRef.current = mappings;
     if (!storageReady) return;
     try {
-      const stored: StoredButtonMappings = { version: 1, mappings };
-      window.localStorage.setItem(BUTTON_MAPPING_STORAGE_KEY, JSON.stringify(stored));
+      const stored: StoredButtonMappingsV2 = { version: 2, mappings };
+      window.localStorage.setItem(
+        BUTTON_MAPPING_STORAGE_KEY,
+        JSON.stringify(stored),
+      );
     } catch {
-      // Mapping remains valid for the current session when storage is blocked.
+      // Mappings remain valid for this tab if storage is unavailable.
     }
   }, [mappings, storageReady]);
 
   useEffect(() => {
-    controlsEnabledRef.current = controlsEnabled;
-    inputUpdatedAtRef.current = inputUpdatedAt;
-    if (controllerState.mappingStatus === "mapped" && controlsEnabled) {
-      inputRef.current = {
-        throttle: controllerState.throttle,
-        yaw: controllerState.yaw,
-        pitch: controllerState.pitch,
-        roll: controllerState.roll,
-        active: true,
-      };
-    } else {
-      inputRef.current = ZERO_INPUT;
-    }
-
-    if (previousControlsEnabledRef.current && !controlsEnabled) {
-      flightStateRef.current = neutralizeFlightMotion(flightStateRef.current);
-      setTelemetry(cloneFlightState(flightStateRef.current));
-    }
-    if (!controlsEnabled) actionControlsEnabledRef.current = false;
-    previousControlsEnabledRef.current = controlsEnabled;
-  }, [controllerState, controlsEnabled, inputUpdatedAt]);
+    flightController.setPreferences(preferences);
+  }, [flightController, preferences]);
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => {
-      reduceMotionRef.current = media.matches;
-    };
-    updatePreference();
-    media.addEventListener("change", updatePreference);
-    return () => media.removeEventListener("change", updatePreference);
-  }, []);
+    flightController.setControllerState(
+      controllerState,
+      controlsEnabled,
+      inputUpdatedAt,
+    );
+  }, [controllerState, controlsEnabled, flightController, inputUpdatedAt]);
 
   useEffect(() => {
-    lastButtonSequenceRef.current = 0;
-    buttonSnapshotRef.current = {};
+    controllerStateRef.current = controllerState;
+  }, [controllerState]);
+
+  useEffect(() => {
+    const currentControllerState = controllerStateRef.current;
+    const latestSequence =
+      currentControllerState.buttonTransitions?.at(-1)?.sequence ?? 0;
+    lastButtonSequenceRef.current = latestSequence;
+    buttonSnapshotRef.current = { ...currentControllerState.buttons };
+    resetControllerGestureRuntime(profileGestureRuntimeRef.current);
     captureRef.current = null;
-    actionControlsEnabledRef.current = false;
-    inputWasFreshRef.current = false;
-    flightStateRef.current = neutralizeFlightMotion(flightStateRef.current);
+    flightController.neutralize();
+    const timer = window.setTimeout(() => {
+      setCapture(null);
+      setMappingMessage(
+        "조종기 연결이 바뀌었습니다. 사용자 버튼 설정은 새 입력부터 적용됩니다.",
+      );
+      setTelemetry(flightController.getState());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [sourceSessionKey, flightController]);
+
+  useEffect(() => {
+    const currentControllerState = controllerStateRef.current;
+    const latestSequence =
+      currentControllerState.buttonTransitions?.at(-1)?.sequence ?? 0;
+    lastButtonSequenceRef.current = latestSequence;
+    buttonSnapshotRef.current = { ...currentControllerState.buttons };
+    resetControllerGestureRuntime(profileGestureRuntimeRef.current);
+    captureRef.current = null;
     const timer = window.setTimeout(() => setCapture(null), 0);
     return () => window.clearTimeout(timer);
-  }, [sourceSessionKey]);
+  }, [preferences.controlMode]);
 
-  const dispatchFlightAction = useCallback((command: FlightCommand) => {
-    flightStateRef.current = applyFlightCommand(flightStateRef.current, command);
-    setTelemetry(cloneFlightState(flightStateRef.current));
-  }, []);
+  const dispatchFlightAction = useCallback(
+    (command: FlightCommand) => {
+      const next = flightController.dispatch(command);
+      setTelemetry(cloneFlightState(next));
+    },
+    [flightController],
+  );
 
   useEffect(() => {
     if (!sourceSessionKey || !mappingSourceId) return;
@@ -409,21 +304,19 @@ export function DroneSimulator({
     const freshEvents = buttonTransitions.filter(
       (event) => event.sequence > lastButtonSequenceRef.current,
     );
-    if (freshEvents.length === 0) {
-      if (controlsEnabled && !actionControlsEnabledRef.current) {
-        buttonSnapshotRef.current = { ...controllerState.buttons };
-        actionControlsEnabledRef.current = true;
-      }
-      return;
-    }
+    if (freshEvents.length === 0) return;
 
-    const latestSequence = freshEvents.at(-1)?.sequence ?? lastButtonSequenceRef.current;
+    const latestSequence =
+      freshEvents.at(-1)?.sequence ?? lastButtonSequenceRef.current;
     if (freshEvents[0].sequence > lastButtonSequenceRef.current + 1) {
       buttonSnapshotRef.current = { ...controllerState.buttons };
       lastButtonSequenceRef.current = latestSequence;
+      resetControllerGestureRuntime(profileGestureRuntimeRef.current);
       captureRef.current = null;
       setCapture(null);
-      setMappingMessage("버튼 기록이 많이 밀려 현재 상태로 다시 맞췄습니다. 기능 설정을 다시 시도해 주세요.");
+      setMappingMessage(
+        "버튼 기록 간격이 벌어져 현재 상태로 다시 맞췄습니다. 설정을 다시 시도해 주세요.",
+      );
       return;
     }
 
@@ -442,15 +335,20 @@ export function DroneSimulator({
 
     let currentCapture = captureRef.current;
     let currentMappings = mappingsRef.current;
-    const controlsJustEnabled =
-      controlsEnabled && !actionControlsEnabledRef.current;
-    actionControlsEnabledRef.current = controlsEnabled;
     for (const events of groups) {
       const previousButtons = buttonSnapshotRef.current;
       const currentButtons = buttonsFromTransitions(previousButtons, events);
+      const newestEventAt = Math.max(...events.map((event) => event.at));
+      const eventAge = Date.now() - newestEventAt;
+      const eventsAreFresh =
+        eventAge >= 0 && eventAge <= INPUT_STALE_AFTER_MS;
       let consumedButtonIds: string[] = [];
 
-      if (currentCapture) {
+      if (
+        eventsAreFresh &&
+        preferences.controlMode === "custom" &&
+        currentCapture
+      ) {
         const capturedAction = currentCapture.action;
         const update = updateButtonCapture(
           currentCapture,
@@ -472,15 +370,33 @@ export function DroneSimulator({
         }
       }
 
-      if (controlsEnabled && !controlsJustEnabled && !document.hidden) {
-        const actions = resolveMappedButtonActions(
-          currentMappings,
-          mappingSourceId,
-          previousButtons,
-          currentButtons,
-          consumedButtonIds,
-        );
-        for (const action of actions) dispatchFlightAction(action);
+      const actionInputReady =
+        eventsAreFresh &&
+        controllerState.connected &&
+        controllerState.mappingStatus === "mapped" &&
+        !document.hidden;
+      if (actionInputReady) {
+        if (preferences.controlMode === "custom") {
+          const actions = resolveMappedButtonActions(
+            currentMappings,
+            mappingSourceId,
+            previousButtons,
+            currentButtons,
+            consumedButtonIds,
+          );
+          for (const action of actions) {
+            dispatchFlightAction(ACTION_COMMAND[action]);
+          }
+        } else {
+          const operations = observeProfileButtonGestures(
+            controllerProfile,
+            events,
+            profileGestureRuntimeRef.current,
+          );
+          for (const operation of operations) {
+            dispatchFlightAction(PROFILE_OPERATION_COMMAND[operation]);
+          }
+        }
       }
       buttonSnapshotRef.current = currentButtons;
     }
@@ -491,11 +407,42 @@ export function DroneSimulator({
     setCapture(currentCapture);
     setMappings(currentMappings);
   }, [
+    controllerProfile,
     controllerState.buttonTransitions,
     controllerState.buttons,
-    controlsEnabled,
+    controllerState.connected,
+    controllerState.mappingStatus,
     dispatchFlightAction,
     mappingSourceId,
+    preferences.controlMode,
+    sourceSessionKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      preferences.controlMode !== "byrobot" ||
+      !sourceSessionKey ||
+      !controlsEnabled ||
+      document.hidden
+    ) {
+      profileGestureRuntimeRef.current.chords.clear();
+      return;
+    }
+    const operations = observeProfileInputChords(
+      controllerProfile,
+      controllerState,
+      Date.now(),
+      profileGestureRuntimeRef.current,
+    );
+    for (const operation of operations) {
+      dispatchFlightAction(PROFILE_OPERATION_COMMAND[operation]);
+    }
+  }, [
+    controllerProfile,
+    controllerState,
+    controlsEnabled,
+    dispatchFlightAction,
+    preferences.controlMode,
     sourceSessionKey,
   ]);
 
@@ -503,67 +450,37 @@ export function DroneSimulator({
     let frame = 0;
     let previousTime = performance.now();
     let lastTelemetryAt = 0;
-    const neutralizeForSafety = () => {
-      flightStateRef.current = neutralizeFlightMotion(flightStateRef.current);
-      inputWasFreshRef.current = false;
-      setTelemetry(cloneFlightState(flightStateRef.current));
-    };
     const handleVisibilityChange = () => {
       previousTime = performance.now();
-      if (document.hidden) neutralizeForSafety();
+      if (document.hidden) {
+        setTelemetry(flightController.resetInputSession());
+      }
     };
     const tick = (time: number) => {
       const elapsed = Math.max(0, (time - previousTime) / 1000);
       previousTime = time;
-      const lastInputAt = inputUpdatedAtRef.current;
-      const inputIsFresh = Boolean(
-        !document.hidden &&
-          controlsEnabledRef.current &&
-          lastInputAt !== null &&
-          Date.now() - lastInputAt <= INPUT_STALE_AFTER_MS,
-      );
-      if (!inputIsFresh && inputWasFreshRef.current) {
-        flightStateRef.current = neutralizeFlightMotion(flightStateRef.current);
-      }
-      inputWasFreshRef.current = inputIsFresh;
-      flightStateRef.current = stepFlightState(
-        flightStateRef.current,
-        inputIsFresh ? inputRef.current : ZERO_INPUT,
-        elapsed,
-      );
-      const canvas = canvasRef.current;
-      if (canvas) {
-        drawDroneScene(
-          canvas,
-          flightStateRef.current,
-          time,
-          reduceMotionRef.current,
-        );
-      }
+      const next = flightController.step(elapsed, Date.now(), !document.hidden);
       if (time - lastTelemetryAt >= 100) {
         lastTelemetryAt = time;
-        setTelemetry(cloneFlightState(flightStateRef.current));
+        setTelemetry(next);
       }
       frame = window.requestAnimationFrame(tick);
     };
-    const canvas = canvasRef.current;
-    if (canvas) {
-      drawDroneScene(
-        canvas,
-        flightStateRef.current,
-        previousTime,
-        reduceMotionRef.current,
-      );
-    }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     frame = window.requestAnimationFrame(tick);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [flightController]);
+
+  const readTransform = useCallback(
+    () => createDroneTransform(flightController.getState()),
+    [flightController],
+  );
 
   const startCapture = (action: MappableButtonAction) => {
+    if (preferences.controlMode !== "custom") return;
     if (!mappingSourceId || !controllerState.connected) {
       setMappingMessage("먼저 조종기를 연결해 주세요.");
       return;
@@ -575,7 +492,9 @@ export function DroneSimulator({
     );
     captureRef.current = next;
     setCapture(next);
-    setMappingMessage(`${ACTION_LABEL[action]}에 사용할 조종기 버튼을 눌러 주세요.`);
+    setMappingMessage(
+      `${ACTION_LABEL[action]}에 사용할 조종기 버튼을 눌러 주세요.`,
+    );
   };
 
   const cancelCapture = () => {
@@ -591,47 +510,46 @@ export function DroneSimulator({
     setMappingMessage(`${ACTION_LABEL[action]} 버튼 설정을 지웠습니다.`);
   };
 
+  const availability = getFlightActionAvailability(
+    telemetry.phase,
+    telemetry.emergencyLatched,
+  );
+  const phaseLabel =
+    telemetry.phase === FLIGHT_PHASE.STOP && telemetry.emergencyLatched
+      ? "긴급 착륙 완료"
+      : PHASE_LABEL[telemetry.phase];
+
   return (
-    <section className="pilot-card simulator-card" aria-labelledby="drone-simulator-title">
+    <section
+      className="pilot-card simulator-card"
+      aria-labelledby="drone-simulator-title"
+    >
       <div className="simulator-heading">
         <div>
-          <span>1차 비행 연습</span>
+          <span>기본 비행 연습</span>
           <h2 id="drone-simulator-title">가상 드론 테스트</h2>
         </div>
         <strong
-          className={`flight-mode mode-${telemetry.mode}`}
+          className={`flight-mode phase-${telemetry.phase.toLowerCase()}`}
           role="status"
           aria-live="polite"
         >
-          {MODE_LABEL[telemetry.mode]}
+          {phaseLabel}
         </strong>
       </div>
 
       <div className="drone-stage">
-        <div className="static-drone" aria-hidden="true">
-          <i className="static-drone__arm static-drone__arm--one" />
-          <i className="static-drone__arm static-drone__arm--two" />
-          <i className="static-drone__rotor static-drone__rotor--one" />
-          <i className="static-drone__rotor static-drone__rotor--two" />
-          <i className="static-drone__rotor static-drone__rotor--three" />
-          <i className="static-drone__rotor static-drone__rotor--four" />
-          <b>BD</b>
-        </div>
-        <canvas
-          ref={canvasRef}
-          role="img"
-          aria-label="밝은 테스트 격자 위의 가상 드론"
-          aria-describedby="flight-telemetry"
-        >
-          밝은 테스트 격자 위에 가상 드론 한 대가 있습니다.
-        </canvas>
+        <DroneVisual readTransform={readTransform} />
         {!controlsEnabled ? (
           <div className="drone-stage-message">
-            <strong>화면 버튼은 지금 바로 사용할 수 있습니다</strong>
-            <span>실제 조종은 조종기를 연결하고 스틱·버튼 입력을 확인한 뒤 사용할 수 있습니다.</span>
+            <strong>화면 버튼으로 비행 절차를 먼저 연습할 수 있습니다</strong>
+            <span>
+              실제 스틱 조종은 조종기를 연결하고 입력이 정상인지 확인한 뒤 활성화됩니다.
+            </span>
           </div>
         ) : null}
         <div id="flight-telemetry" className="flight-telemetry" aria-live="off">
+          <span>비행 상태 <strong>{phaseLabel}</strong></span>
           <span>고도 <strong>{telemetry.position.y.toFixed(2)} m</strong></span>
           <span>방향 <strong>{Math.round((telemetry.yaw * 180) / Math.PI)}°</strong></span>
           <span>위치 <strong>{telemetry.position.x.toFixed(1)}, {telemetry.position.z.toFixed(1)}</strong></span>
@@ -639,55 +557,124 @@ export function DroneSimulator({
       </div>
 
       <div className="flight-action-bar" aria-label="드론 동작 버튼">
-        <button type="button" className="is-takeoff" onClick={() => dispatchFlightAction("takeoff")}>이륙</button>
-        <button type="button" onClick={() => dispatchFlightAction("land")}>착륙</button>
-        <button type="button" onClick={() => dispatchFlightAction("reset")}>위치 초기화</button>
-        <button type="button" className="is-emergency" onClick={() => dispatchFlightAction("emergency")}>긴급 정지</button>
+        <button
+          type="button"
+          className="is-start"
+          disabled={!availability.start}
+          onClick={() => dispatchFlightAction("start")}
+        >
+          시동
+        </button>
+        <button
+          type="button"
+          className="is-takeoff"
+          disabled={!availability.takeoff}
+          onClick={() => dispatchFlightAction("takeoff")}
+        >
+          이륙
+        </button>
+        <button
+          type="button"
+          disabled={!availability.land}
+          onClick={() => dispatchFlightAction("land")}
+        >
+          착륙
+        </button>
+        <button
+          type="button"
+          disabled={!availability.reset}
+          onClick={() => dispatchFlightAction("reset")}
+        >
+          위치 초기화
+        </button>
+        <button
+          type="button"
+          className="is-emergency"
+          disabled={!availability.emergency}
+          onClick={() => dispatchFlightAction("emergency")}
+        >
+          긴급 안전 착륙
+        </button>
       </div>
 
-      <div className="button-mapping-panel">
-        <div className="button-mapping-heading">
-          <div>
-            <span>조종기 버튼 설정</span>
-            <h3>버튼 기능 연결</h3>
+      <FlightSettingsPanel
+        preferences={preferences}
+        axisCount={axisCount}
+        profileName={sourceSessionKey ? controllerProfile.label : "조종기 연결 대기"}
+        basicButtonsAvailable={Boolean(
+          sourceSessionKey && profileHasDefaultButtons,
+        )}
+        onUpdate={onUpdatePreferences}
+        onReset={onResetPreferences}
+      />
+
+      {preferences.controlMode === "custom" ? (
+        <div className="button-mapping-panel">
+          <div className="button-mapping-heading">
+            <div>
+              <span>사용자 설정</span>
+              <h3>조종기 버튼 설정</h3>
+            </div>
+            {capture ? (
+              <button
+                type="button"
+                className="mapping-cancel"
+                onClick={cancelCapture}
+              >
+                설정 취소
+              </button>
+            ) : null}
           </div>
-          {capture ? <button type="button" className="mapping-cancel" onClick={cancelCapture}>설정 취소</button> : null}
-        </div>
-        <div className="button-mapping-list">
-          {(["takeoff", "land", "emergency"] as const).map((action) => {
-            const binding = mappings[action];
-            const belongsToController = binding?.sourceId === mappingSourceId;
-            return (
-              <div key={action} className={capture?.action === action ? "mapping-row is-listening" : "mapping-row"}>
-                <div>
-                  <span>{ACTION_LABEL[action]} 버튼</span>
-                  <strong>{belongsToController ? displayButtonId(binding?.buttonId) : "미설정"}</strong>
-                </div>
-                <button
-                  type="button"
-                  aria-label={`${ACTION_LABEL[action]} 버튼 설정`}
-                  aria-pressed={capture?.action === action}
-                  onClick={() => startCapture(action)}
-                  disabled={!controllerState.connected}
-                >
-                  {capture?.action === action ? "입력 대기 중" : "설정"}
-                </button>
-                {belongsToController ? (
-                  <button
-                    type="button"
-                    className="mapping-clear"
-                    aria-label={`${ACTION_LABEL[action]} 버튼 설정 지우기`}
-                    onClick={() => removeMapping(action)}
+          <div className="button-mapping-list">
+            {(["start", "takeoff", "land", "emergency"] as const).map(
+              (action) => {
+                const binding = mappings[action];
+                const belongsToController =
+                  binding?.sourceId === mappingSourceId;
+                return (
+                  <div
+                    key={action}
+                    className={
+                      capture?.action === action
+                        ? "mapping-row is-listening"
+                        : "mapping-row"
+                    }
                   >
-                    지우기
-                  </button>
-                ) : null}
-              </div>
-            );
-          })}
+                    <div>
+                      <span>{ACTION_LABEL[action]}</span>
+                      <strong>
+                        {belongsToController
+                          ? displayButtonId(binding?.buttonId)
+                          : "미설정"}
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`${ACTION_LABEL[action]} 버튼 설정`}
+                      aria-pressed={capture?.action === action}
+                      onClick={() => startCapture(action)}
+                      disabled={!controllerState.connected}
+                    >
+                      {capture?.action === action ? "버튼을 눌러 주세요" : "설정"}
+                    </button>
+                    {belongsToController ? (
+                      <button
+                        type="button"
+                        className="mapping-clear"
+                        aria-label={`${ACTION_LABEL[action]} 버튼 설정 지우기`}
+                        onClick={() => removeMapping(action)}
+                      >
+                        지우기
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              },
+            )}
+          </div>
+          <p className="mapping-message" role="status">{mappingMessage}</p>
         </div>
-        <p className="mapping-message" role="status">{mappingMessage}</p>
-      </div>
+      ) : null}
     </section>
   );
 }

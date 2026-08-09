@@ -2256,14 +2256,21 @@ h1 {
   padding: 8px 12px;
 }
 
-.flight-mode.mode-flying,
-.flight-mode.mode-taking_off {
+.flight-mode.phase-start,
+.flight-mode.phase-takeoff,
+.flight-mode.phase-flight {
   background: #eaf8f0;
   border-color: #b6e1c9;
   color: #11633a;
 }
 
-.flight-mode.mode-emergency {
+.flight-mode.phase-landing {
+  background: #fff7eb;
+  border-color: #f2d5ad;
+  color: #9b570d;
+}
+
+.flight-mode.phase-emergency {
   background: #fff0ef;
   border-color: #f4c6c2;
   color: #b1322b;
@@ -2427,14 +2434,242 @@ h1 {
   border-top: 1px solid #e4ebf3;
   display: grid;
   gap: 9px;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   padding: 14px 16px;
+}
+
+.flight-action-bar button.is-start {
+  background: #eef4ff;
+  border-color: #b9cbf5;
+  color: #244fae;
 }
 
 .flight-action-bar button.is-emergency {
   background: #fff0ef;
   border-color: #edaaa5;
   color: #b1322b;
+  font-weight: 800;
+}
+
+.flight-settings-panel {
+  background: #f8fafc;
+  border-top: 1px solid #e0e7f0;
+  padding: 18px;
+}
+
+.flight-settings-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.flight-settings-heading > div > span,
+.custom-axis-settings > div:first-child > span {
+  color: #66758a;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
+}
+
+.flight-settings-heading h3,
+.custom-axis-settings h4 {
+  color: #172033;
+  font-size: 17px;
+  margin: 0;
+}
+
+.flight-settings-heading .settings-reset {
+  min-height: 38px;
+  padding: 7px 12px;
+}
+
+.flight-settings-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.25fr 1.75fr 1fr 1fr;
+}
+
+.flight-setting-group {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.flight-setting-group legend {
+  color: #45556a;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 7px;
+  padding: 0;
+}
+
+.segmented-control {
+  background: #e9eef5;
+  border-radius: 11px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+}
+
+.segmented-control.three-options {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.segmented-control button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 7px 8px;
+}
+
+.segmented-control button small {
+  display: block;
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.segmented-control button[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(30, 56, 84, 0.13);
+  color: #2452cf;
+  font-weight: 800;
+}
+
+.flight-range-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 16px;
+}
+
+.flight-range-setting {
+  display: block;
+}
+
+.flight-range-setting > span {
+  align-items: center;
+  color: #45556a;
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.flight-range-setting output {
+  color: #2452cf;
+  font-family: var(--mono);
+  font-weight: 800;
+}
+
+.flight-range-setting input[type="range"] {
+  accent-color: #316bff;
+  min-height: 28px;
+  width: 100%;
+}
+
+.basic-profile-summary {
+  background: #eef4ff;
+  border: 1px solid #d4e0ff;
+  border-radius: 12px;
+  display: grid;
+  gap: 3px;
+  margin-top: 15px;
+  padding: 12px 14px;
+}
+
+.basic-profile-summary span,
+.basic-profile-summary small {
+  color: #66758a;
+  font-size: 11px;
+}
+
+.basic-profile-summary strong {
+  color: #244fae;
+  font-size: 14px;
+}
+
+.custom-axis-settings {
+  background: #fff;
+  border: 1px solid #dfe6ef;
+  border-radius: 13px;
+  margin-top: 15px;
+  padding: 14px;
+}
+
+.custom-axis-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+
+.custom-axis-row {
+  align-items: end;
+  background: #f7f9fc;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+  padding: 9px;
+}
+
+.custom-axis-row label > span {
+  color: #53647a;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.custom-axis-row select {
+  background: #fff;
+  border: 1px solid #cbd7e6;
+  border-radius: 8px;
+  color: #24354b;
+  min-height: 38px;
+  width: 100%;
+}
+
+.custom-axis-row .axis-invert-check {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  min-height: 38px;
+}
+
+.custom-axis-row .axis-invert-check span {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.advanced-flight-settings {
+  border-top: 1px solid #e0e7f0;
+  margin-top: 15px;
+  padding-top: 12px;
+}
+
+.advanced-flight-settings summary {
+  color: #45556a;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.advanced-flight-settings .flight-range-setting {
+  margin-top: 12px;
+}
+
+.advanced-flight-settings p {
+  color: #66758a;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 8px 0 0;
 }
 
 .button-mapping-panel {
@@ -2507,6 +2742,65 @@ h1 {
   font-size: 11px;
   line-height: 1.5;
   margin: 11px 2px 0;
+}
+
+.operation-capture-panel {
+  margin-bottom: 18px;
+}
+
+.operation-capture-intro,
+.operation-capture-message {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0;
+  padding: 0 18px 16px;
+}
+
+.operation-capture-grid {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 0 18px 16px;
+}
+
+.operation-capture-grid article {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+}
+
+.operation-capture-grid article.is-recording {
+  background: var(--orange-dim);
+  border-color: var(--orange);
+}
+
+.operation-capture-grid article span,
+.operation-capture-grid article strong {
+  display: block;
+}
+
+.operation-capture-grid article span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.operation-capture-grid article strong {
+  color: var(--text);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.operation-capture-grid article button {
+  min-height: 42px;
+}
+
+.operation-capture-actions {
+  padding: 0 18px 12px;
 }
 
 .developer-details {
@@ -2606,6 +2900,14 @@ h1 {
   .stick-input-card > .simple-help {
     display: none;
   }
+
+  .flight-settings-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .operation-capture-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 860px) {
@@ -2689,6 +2991,10 @@ h1 {
   .developer-details__body {
     padding-inline: 12px;
   }
+
+  .flight-action-bar {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 560px) {
@@ -2729,6 +3035,22 @@ h1 {
   .simple-connection-actions,
   .flight-action-bar {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .flight-action-bar .is-emergency {
+    grid-column: 1 / -1;
+    min-height: 50px;
+  }
+
+  .flight-settings-grid,
+  .flight-range-grid,
+  .custom-axis-grid,
+  .operation-capture-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-mode-setting {
+    grid-column: auto;
   }
 
   .drone-stage,

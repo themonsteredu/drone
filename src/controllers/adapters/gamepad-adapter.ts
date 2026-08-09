@@ -9,8 +9,10 @@ import {
   type DetectionContext,
   type DeviceInfo,
 } from "../types";
+import { GENERIC_GAMEPAD_PROFILE } from "../profiles";
 
 export interface GamepadRawSnapshot {
+  sampledAt: number;
   id: string;
   index: number;
   mapping: GamepadMappingType;
@@ -26,12 +28,15 @@ export class GamepadControllerAdapter implements ControllerAdapter {
   readonly id: string;
   readonly name = "Gamepad API Controller";
   readonly connectionMethod = "gamepad" as const;
+  readonly controllerProfile = GENERIC_GAMEPAD_PROFILE;
 
   private state = createUnidentifiedState(false);
   private diagnostics = createWaitingDiagnostics("gamepad");
   private raw: GamepadRawSnapshot | null = null;
   private previousAxes: number[] | null = null;
   private previousButtons: boolean[] | null = null;
+  private previousGamepadTimestamp: number | null = null;
+  private lastHardwareUpdatedAt: number | null = null;
   private axisChangedEver = false;
   private buttonChangedEver = false;
   private lastPressedButtonNumber: number | null = null;
@@ -67,7 +72,7 @@ export class GamepadControllerAdapter implements ControllerAdapter {
   }
 
   update(gamepad: Gamepad): void {
-    const updatedAt = Date.now();
+    const sampledAt = Date.now();
     const axes = Array.from(gamepad.axes);
     const buttonStates = gamepad.buttons.map((button) => button.pressed);
     const axisChanged =
@@ -82,6 +87,16 @@ export class GamepadControllerAdapter implements ControllerAdapter {
           (pressed, index) =>
             pressed !== (this.previousButtons?.[index] ?? pressed),
         );
+    const timestampSupported =
+      Number.isFinite(gamepad.timestamp) && gamepad.timestamp > 0;
+    const browserSnapshotAdvanced =
+      !timestampSupported ||
+      this.previousGamepadTimestamp === null ||
+      gamepad.timestamp !== this.previousGamepadTimestamp ||
+      axisChanged ||
+      buttonChanged;
+    if (browserSnapshotAdvanced) this.lastHardwareUpdatedAt = sampledAt;
+    const updatedAt = this.lastHardwareUpdatedAt ?? sampledAt;
     this.axisChangedEver ||= axisChanged;
     this.buttonChangedEver ||= buttonChanged;
     const observationSequence = buttonChanged
@@ -103,6 +118,7 @@ export class GamepadControllerAdapter implements ControllerAdapter {
     this.buttonTransitions = this.buttonTransitions.slice(-128);
 
     this.raw = {
+      sampledAt,
       id: gamepad.id,
       index: gamepad.index,
       mapping: gamepad.mapping,
@@ -142,6 +158,7 @@ export class GamepadControllerAdapter implements ControllerAdapter {
     };
     this.previousAxes = axes;
     this.previousButtons = buttonStates;
+    this.previousGamepadTimestamp = gamepad.timestamp;
   }
 
   async disconnect(): Promise<void> {
@@ -150,6 +167,8 @@ export class GamepadControllerAdapter implements ControllerAdapter {
     this.raw = null;
     this.previousAxes = null;
     this.previousButtons = null;
+    this.previousGamepadTimestamp = null;
+    this.lastHardwareUpdatedAt = null;
     this.axisChangedEver = false;
     this.buttonChangedEver = false;
     this.lastPressedButtonNumber = null;

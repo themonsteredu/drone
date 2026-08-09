@@ -28,6 +28,10 @@ import {
 } from "../controllers/adapters/gamepad-adapter";
 import { ControllerManager } from "../controllers/controller-manager";
 import {
+  resolveControllerProfile,
+  selectControllerProfile,
+} from "../controllers/profiles";
+import {
   createUnidentifiedState,
   createWaitingDiagnostics,
   type ControllerDiagnostics,
@@ -39,7 +43,14 @@ import {
   ControllerStatusPanel,
   StickInputPanel,
 } from "./controller-simple-ui";
+import {
+  axisAssignmentsFromPreferences,
+  invertedAxesFromPreferences,
+} from "../simulator/settings";
+import { INPUT_STALE_AFTER_MS } from "../simulator/flight-controller";
+import { ByrobotOperationCapture } from "./byrobot-operation-capture";
 import { DroneSimulator } from "./drone-simulator";
+import { useSimulatorPreferences } from "./use-simulator-preferences";
 
 type ApiSupport = {
   checked: boolean;
@@ -61,12 +72,6 @@ type GamepadView = GamepadRawSnapshot & {
 };
 
 const BAUD_RATES = [9600, 57600, 115200] as const;
-const BYROBOT_BASIC_STICK_ASSIGNMENTS = [
-  "yaw",
-  "throttle",
-  "roll",
-  "pitch",
-] as const satisfies readonly SemanticControl[];
 const CONTROLS: Array<{ value: SemanticControl; label: string }> = [
   { value: "throttle", label: "Throttle" },
   { value: "yaw", label: "Yaw" },
@@ -299,6 +304,11 @@ function StickField({
 
 export function ControllerDiagnosticsPage() {
   const [manager] = useState(() => new ControllerManager());
+  const {
+    preferences,
+    updatePreferences,
+    resetPreferences,
+  } = useSimulatorPreferences();
 
   const [support, setSupport] = useState<ApiSupport>({
     checked: false,
@@ -802,49 +812,110 @@ export function ControllerDiagnosticsPage() {
         ? selectedGamepad.state
         : createUnidentifiedState(false);
   const controllerInput = serialSnapshot?.controllerInput ?? null;
-  const defaultSerialMappingAvailable = Boolean(
-    activeMethod === "serial" &&
-      controllerInput?.evidence.joystickDecoded &&
-      controllerInput.joystickUnsupportedReason === null &&
-      controllerInput.latestJoystick?.axesWithinDocumentedRange &&
-      activeRawAxes.length >= 4,
+  const controllerProfile = selectControllerProfile(
+    activeMethod === "serial"
+      ? (serialSnapshot?.adapterId ?? "byrobot-serial-generic-coding-e-candidate")
+      : "gamepad-generic",
   );
-  const defaultSerialCalibrations = defaultSerialMappingAvailable
-    ? createFixedAxisProfile(activeRawAxes, BYROBOT_BASIC_STICK_ASSIGNMENTS, {
-        deadZone: 0.1,
-      })
-    : [];
-  const userMappedControllerState = projectMappedControllerState(
+  const resolvedControllerProfile = resolveControllerProfile(
+    controllerProfile,
+    {
+      codecId: controllerInput?.codecId,
+      dataType: controllerInput?.latestJoystick ? 0x71 : undefined,
+      payloadLength: controllerInput?.latestJoystick?.rawPayload.length,
+      axisCount: activeRawAxes.length,
+    },
+  );
+  const basicAssignments: Array<SemanticControl | null> = Array.from(
+    { length: activeRawAxes.length },
+    () => null,
+  );
+  const basicInvertedAxes: number[] = [];
+  for (const binding of resolvedControllerProfile.axisBindings) {
+    if (binding.rawAxisIndex >= basicAssignments.length) continue;
+    basicAssignments[binding.rawAxisIndex] = binding.control;
+    if (binding.inverted) basicInvertedAxes.push(binding.rawAxisIndex);
+  }
+  const basicCalibrations =
+    resolvedControllerProfile.axisSource === "verified-protocol-preset"
+      ? createFixedAxisProfile(activeRawAxes, basicAssignments, {
+          deadZone: 0,
+          invertedAxes: basicInvertedAxes,
+        })
+      : [];
+  const customFixedCalibrations = createFixedAxisProfile(
+    activeRawAxes,
+    axisAssignmentsFromPreferences(preferences, activeRawAxes.length),
+    {
+      deadZone: 0,
+      invertedAxes: invertedAxesFromPreferences(preferences),
+    },
+  );
+  const developerCalibratedState = projectMappedControllerState(
     activeAdapterState,
     activeCalibrations,
   );
-  const usingUserMapping = userMappedControllerState.mappingStatus === "mapped";
-  const commonControllerState = usingUserMapping
-    ? userMappedControllerState
-    : projectMappedControllerState(
-        activeAdapterState,
-        defaultSerialCalibrations,
-      );
+  const customCalibrations =
+    calibrationStarted && developerCalibratedState.mappingStatus === "mapped"
+      ? activeCalibrations
+      : customFixedCalibrations;
+  const selectedCalibrations =
+    preferences.controlMode === "custom"
+      ? customCalibrations
+      : basicCalibrations;
+  const commonControllerState = projectMappedControllerState(
+    activeAdapterState,
+    selectedCalibrations,
+  );
+  const usingUserMapping =
+    preferences.controlMode === "custom" &&
+    commonControllerState.mappingStatus === "mapped";
 
   useEffect(() => {
     manager.setStateProjector((state) => {
-      const profile = usingUserMapping
-        ? activeCalibrations
-        : defaultSerialMappingAvailable
-          ? createFixedAxisProfile(
-              state.rawAxes ?? [],
-              BYROBOT_BASIC_STICK_ASSIGNMENTS,
-              { deadZone: 0.1 },
-            )
+      const rawAxes = state.rawAxes ?? [];
+      if (preferences.controlMode === "custom") {
+        const profile =
+          calibrationStarted && developerCalibratedState.mappingStatus === "mapped"
+            ? activeCalibrations
+            : createFixedAxisProfile(
+                rawAxes,
+                axisAssignmentsFromPreferences(preferences, rawAxes.length),
+                {
+                  deadZone: 0,
+                  invertedAxes: invertedAxesFromPreferences(preferences),
+                },
+              );
+        return projectMappedControllerState(state, profile);
+      }
+      const assignments: Array<SemanticControl | null> = Array.from(
+        { length: rawAxes.length },
+        () => null,
+      );
+      const invertedAxes: number[] = [];
+      for (const binding of resolvedControllerProfile.axisBindings) {
+        if (binding.rawAxisIndex >= assignments.length) continue;
+        assignments[binding.rawAxisIndex] = binding.control;
+        if (binding.inverted) invertedAxes.push(binding.rawAxisIndex);
+      }
+      const profile =
+        resolvedControllerProfile.axisSource === "verified-protocol-preset"
+          ? createFixedAxisProfile(rawAxes, assignments, {
+              deadZone: 0,
+              invertedAxes,
+            })
           : [];
       return projectMappedControllerState(state, profile);
     });
     return () => manager.setStateProjector(null);
   }, [
     activeCalibrations,
-    defaultSerialMappingAvailable,
+    calibrationStarted,
+    developerCalibratedState.mappingStatus,
     manager,
-    usingUserMapping,
+    preferences,
+    resolvedControllerProfile.axisBindings,
+    resolvedControllerProfile.axisSource,
   ]);
   const mappedValues = {
     throttle: commonControllerState.throttle,
@@ -854,14 +925,33 @@ export function ControllerDiagnosticsPage() {
   };
 
   const mappingComplete = commonControllerState.mappingStatus === "mapped";
+  const activeInputUpdatedAt =
+    activeMethod === "serial"
+      ? (controllerInput?.latestAcceptedJoystickAt ?? null)
+      : selectedGamepad?.state.updatedAt ?? null;
+  const serialStickInputFresh = Boolean(
+    activeMethod === "serial" &&
+      serialSnapshot &&
+      activeInputUpdatedAt !== null &&
+      serialSnapshot.capturedAt - activeInputUpdatedAt >= 0 &&
+      serialSnapshot.capturedAt - activeInputUpdatedAt <= INPUT_STALE_AFTER_MS,
+  );
+  const gamepadInputFresh = Boolean(
+    activeMethod === "gamepad" &&
+      selectedGamepad &&
+      activeInputUpdatedAt !== null &&
+      selectedGamepad.sampledAt - activeInputUpdatedAt >= 0 &&
+      selectedGamepad.sampledAt - activeInputUpdatedAt <= INPUT_STALE_AFTER_MS,
+  );
   const stickInputOk =
     activeMethod === "serial"
       ? Boolean(
           controllerInput?.evidence.joystickDecoded &&
-            controllerInput.evidence.joystickChangedEver,
+            controllerInput.evidence.joystickChangedEver &&
+            serialStickInputFresh,
         )
       : activeMethod === "gamepad"
-        ? Boolean(selectedGamepad?.axisChangedEver)
+        ? Boolean(selectedGamepad?.axisChangedEver && gamepadInputFresh)
         : false;
   const buttonInputOk =
     activeMethod === "serial"
@@ -887,9 +977,9 @@ export function ControllerDiagnosticsPage() {
     null;
   const mappingSourceId =
     activeMethod === "serial"
-      ? `serial:${portSelection?.usbVendorId ?? "unknown"}:${portSelection?.usbProductId ?? "unknown"}:${serialSnapshot?.adapterId ?? "byrobot"}`
+      ? `serial:${controllerProfile.id}:${portSelection?.usbVendorId ?? "unknown"}:${portSelection?.usbProductId ?? "unknown"}:${serialSnapshot?.adapterId ?? "byrobot"}`
       : selectedGamepad
-        ? `gamepad:${selectedGamepad.id}`
+        ? `gamepad:${controllerProfile.id}:${selectedGamepad.id}`
         : null;
   const simpleConnected = Boolean(
     serialSnapshot?.isOpen || selectedGamepad,
@@ -902,12 +992,12 @@ export function ControllerDiagnosticsPage() {
       : simpleConnected
         ? "입력 확인 중"
         : "연결 필요";
-  const activeInputUpdatedAt =
-    activeMethod === "serial"
-      ? (controllerInput?.latestJoystick?.receivedAt ?? null)
-      : selectedGamepad?.state.updatedAt ?? null;
   const simpleNotice = ready
     ? "준비됐습니다. 이륙 버튼을 누른 뒤 스틱으로 드론을 움직여 보세요."
+    : activeMethod === "serial" &&
+        controllerInput?.evidence.joystickDecoded &&
+        !serialStickInputFresh
+      ? "최근 스틱 데이터가 멈췄습니다. 연결 상태와 입력 전송을 확인해 주세요."
     : simpleConnected
       ? "스틱과 버튼을 한 번씩 움직여 입력을 확인해 주세요."
       : portSelection
@@ -1095,12 +1185,18 @@ export function ControllerDiagnosticsPage() {
           sourceSessionKey={activeSourceKey}
           mappingSourceId={mappingSourceId}
           inputUpdatedAt={activeInputUpdatedAt}
+          controllerProfile={controllerProfile}
+          preferences={preferences}
+          axisCount={activeRawAxes.length}
+          onUpdatePreferences={updatePreferences}
+          onResetPreferences={resetPreferences}
         />
 
         <StickInputPanel
           axes={activeRawAxes}
           recentButtonNumber={recentButtonNumber}
           connected={simpleConnected}
+          deadZone={preferences.deadZone}
         />
       </section>
 
@@ -1156,6 +1252,18 @@ export function ControllerDiagnosticsPage() {
           ))}
         </section>
       ) : null}
+
+      <ByrobotOperationCapture
+        sourceSessionKey={activeMethod === "serial" ? activeSourceKey : null}
+        controllerProfileId={controllerProfile.id}
+        controllerProfileName={controllerProfile.label}
+        deviceIdentity={`${formatHex(portSelection?.usbVendorId, 4)}:${formatHex(portSelection?.usbProductId, 4)}:${serialSnapshot?.adapterId ?? "unknown"}`}
+        frames={
+          activeMethod === "serial"
+            ? (serialSnapshot?.controllerInputFrames ?? [])
+            : []
+        }
+      />
 
       <section className="panel pipeline-panel" aria-labelledby="pipeline-title">
         <div className="panel-heading">

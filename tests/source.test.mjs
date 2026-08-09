@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("keeps browser hardware APIs in a client-only diagnostics component", async () => {
-  const [page, component, simpleUi, simulator] = await Promise.all([
+  const [page, component, simpleUi, simulator, flightController, visual, settings] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(
       new URL("../src/components/controller-diagnostics.tsx", import.meta.url),
@@ -15,6 +15,18 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
     ),
     readFile(
       new URL("../src/components/drone-simulator.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/simulator/flight-controller.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/drone-visual.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/flight-settings-panel.tsx", import.meta.url),
       "utf8",
     ),
   ]);
@@ -42,13 +54,22 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(simpleUi, /최근 눌린 버튼/);
   assert.match(simulator, /가상 드론 테스트/);
   assert.match(simulator, /dispatchFlightAction\("takeoff"\)/);
+  assert.match(simulator, /dispatchFlightAction\("start"\)/);
   assert.match(simulator, /dispatchFlightAction\("land"\)/);
   assert.match(simulator, /dispatchFlightAction\("reset"\)/);
   assert.match(simulator, /dispatchFlightAction\("emergency"\)/);
+  assert.match(simulator, /disabled=\{!availability\.emergency\}/);
+  assert.match(simulator, /resetInputSession\(\)/);
+  assert.match(simulator, /eventAge <= INPUT_STALE_AFTER_MS/);
   assert.match(simulator, /BUTTON_MAPPING_STORAGE_KEY/);
   assert.match(simulator, /controllerState\.buttonTransitions/);
   assert.doesNotMatch(simulator, /diagnostics\/button-event-journal/);
-  assert.match(simulator, /INPUT_STALE_AFTER_MS = 500/);
+  assert.match(flightController, /INPUT_STALE_AFTER_MS = 500/);
+  assert.match(flightController, /ControllerState/);
+  assert.match(visual, /DroneTransform/);
+  assert.match(settings, /바이로봇 기본 조종/);
+  assert.match(settings, /헤드리스 모드/);
+  assert.match(settings, /자세 안정화/);
 });
 
 test("keeps Gamepad stick, button, and transition evidence independent", async () => {
@@ -78,8 +99,18 @@ test("contains the requested adapter and protocol module boundaries", async () =
     "../src/controllers/protocols/byrobot/controller-input.ts",
     "../src/controllers/diagnostics/data-type-monitor.ts",
     "../src/controllers/diagnostics/button-event-journal.ts",
+    "../src/controllers/profiles/types.ts",
+    "../src/controllers/profiles/byrobot-profiles.ts",
+    "../src/controllers/profiles/gesture-runtime.ts",
+    "../src/controllers/profiles/operation-discovery.ts",
+    "../src/simulator/settings.ts",
+    "../src/simulator/flight-controller.ts",
     "../src/simulator/flight-model.ts",
+    "../src/simulator/drone-transform.ts",
     "../src/simulator/button-mapping.ts",
+    "../src/components/drone-visual.tsx",
+    "../src/components/flight-settings-panel.tsx",
+    "../src/components/byrobot-operation-capture.tsx",
   ];
 
   await Promise.all(files.map((file) => readFile(new URL(file, import.meta.url), "utf8")));

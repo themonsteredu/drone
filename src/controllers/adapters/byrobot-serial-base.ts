@@ -49,6 +49,8 @@ import {
   type DetectionContext,
   type DeviceInfo,
 } from "../types";
+import { GENERIC_BYROBOT_PROFILE } from "../profiles";
+import type { OperationDiscoveryFrame } from "../profiles/operation-discovery";
 
 export interface RawSerialEntry {
   id: number;
@@ -75,7 +77,12 @@ export interface ControllerInputAcquisitionSnapshot {
   requestRecommended: boolean;
 }
 
+export interface ControllerInputFrameEntry extends OperationDiscoveryFrame {
+  sequence: number;
+}
+
 export interface ByrobotSerialSnapshot {
+  capturedAt: number;
   adapterId: string;
   adapterName: string;
   isOpen: boolean;
@@ -101,6 +108,7 @@ export interface ByrobotSerialSnapshot {
   activationPingLastAt: number | null;
   dataTypeStats: DataTypeWindowEntry[];
   controllerInput: ByrobotControllerInputSnapshot;
+  controllerInputFrames: ControllerInputFrameEntry[];
   buttonTransitions: ControllerButtonTransition[];
   inputAcquisition: ControllerInputAcquisitionSnapshot;
 }
@@ -109,6 +117,7 @@ type Listener = () => void;
 
 export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   readonly connectionMethod = "serial" as const;
+  readonly controllerProfile = GENERIC_BYROBOT_PROFILE;
 
   protected state: ControllerState = createUnidentifiedState(false);
   protected diagnostics = createWaitingDiagnostics("serial");
@@ -121,6 +130,8 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
   private readonly dataTypeMonitor = new ByrobotDataTypeMonitor();
   private readonly buttonEventJournal = new ControllerButtonEventJournal();
   private readonly inputTracker: ByrobotControllerInputTracker;
+  private controllerInputFrames: ControllerInputFrameEntry[] = [];
+  private controllerInputFrameSequence = 0;
   private readonly listeners = new Set<Listener>();
   private rawEntries: RawSerialEntry[] = [];
   private throughput: ThroughputSample[] = [];
@@ -408,6 +419,7 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     const recent = this.throughput.filter((sample) => now - sample.at <= 1_000);
     const controllerInput = this.inputTracker.snapshot();
     return {
+      capturedAt: now,
       adapterId: this.id,
       adapterName: this.name,
       isOpen: this.connection.isOpen,
@@ -433,6 +445,10 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
       activationPingLastAt: this.activationPingLastAt,
       dataTypeStats: this.dataTypeMonitor.snapshot(now),
       controllerInput,
+      controllerInputFrames: this.controllerInputFrames.map((entry) => ({
+        ...entry,
+        payload: [...entry.payload],
+      })),
       buttonTransitions: this.buttonEventJournal.snapshot(),
       inputAcquisition: {
         mode:
@@ -594,6 +610,15 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     }
 
     if (this.inputRequestCount > 0) this.inputPacketsAfterFirstRequest += 1;
+    this.controllerInputFrames.push({
+      sequence: ++this.controllerInputFrameSequence,
+      dataType: packet.dataType,
+      payload: Array.from(packet.payload),
+      receivedAt: packet.receivedAt,
+      from: packet.from,
+      to: packet.to,
+    });
+    this.controllerInputFrames = this.controllerInputFrames.slice(-512);
     this.inputTracker.observe(packet);
     const input = this.inputTracker.snapshot();
 
@@ -704,6 +729,8 @@ export class ByrobotSerialBaseAdapter implements ControllerAdapter {
     this.dataTypeMonitor.reset();
     this.inputTracker.reset();
     this.buttonEventJournal.reset();
+    this.controllerInputFrames = [];
+    this.controllerInputFrameSequence = 0;
     this.state = createUnidentifiedState(false);
     this.diagnostics = createWaitingDiagnostics("serial");
     this.rawEntries = [];

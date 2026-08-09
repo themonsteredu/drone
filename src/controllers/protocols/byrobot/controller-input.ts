@@ -60,6 +60,8 @@ export interface ByrobotControllerInputSnapshot {
   codecId: string;
   codecLabel: string;
   latestJoystick: ByrobotJoystickInput | null;
+  /** Timestamp of the latest joystick sample accepted for ControllerState. */
+  latestAcceptedJoystickAt: number | null;
   latestButton: ByrobotButtonInput | null;
   joystickPacketCount: number;
   buttonPacketCount: number;
@@ -279,6 +281,7 @@ function cloneButton(value: ByrobotButtonInput | null): ByrobotButtonInput | nul
 export class ByrobotControllerInputTracker {
   private latestJoystick: ByrobotJoystickInput | null = null;
   private validJoystickBaseline: ByrobotJoystickInput | null = null;
+  private latestAcceptedJoystickAt: number | null = null;
   private latestButton: ByrobotButtonInput | null = null;
   private joystickPacketCount = 0;
   private buttonPacketCount = 0;
@@ -313,6 +316,7 @@ export class ByrobotControllerInputTracker {
   reset(): void {
     this.latestJoystick = null;
     this.validJoystickBaseline = null;
+    this.latestAcceptedJoystickAt = null;
     this.latestButton = null;
     this.joystickPacketCount = 0;
     this.buttonPacketCount = 0;
@@ -337,6 +341,7 @@ export class ByrobotControllerInputTracker {
       codecId: this.codec.id,
       codecLabel: this.codec.label,
       latestJoystick: cloneJoystick(this.latestJoystick),
+      latestAcceptedJoystickAt: this.latestAcceptedJoystickAt,
       latestButton: cloneButton(this.latestButton),
       joystickPacketCount: this.joystickPacketCount,
       buttonPacketCount: this.buttonPacketCount,
@@ -378,6 +383,7 @@ export class ByrobotControllerInputTracker {
     );
     this.latestJoystick = next;
     this.validJoystickBaseline = next;
+    this.latestAcceptedJoystickAt = next.receivedAt;
     this.joystickUnsupportedReason = null;
     this.evidence.joystickDecoded = true;
     if (this.latestJoystickChanged) this.evidence.joystickChangedEver = true;

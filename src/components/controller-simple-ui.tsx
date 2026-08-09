@@ -23,6 +23,7 @@ interface StickInputPanelProps {
   axes: readonly number[];
   recentButtonNumber: number | null;
   connected: boolean;
+  deadZone: number;
 }
 
 function StatusRow({
@@ -116,7 +117,7 @@ export function ControllerStatusPanel({
       </ul>
 
       <div className={ready ? "simple-ready-state is-ready" : "simple-ready-state"} role="status" aria-live="polite">
-        <span>현재 상태</span>
+        <span>조종기 상태</span>
         <strong>{currentStatus}</strong>
       </div>
 
@@ -169,6 +170,7 @@ export function StickInputPanel({
   axes,
   recentButtonNumber,
   connected,
+  deadZone,
 }: StickInputPanelProps) {
   const axis = (index: number) =>
     connected && Number.isFinite(axes[index]) ? axes[index] : null;
@@ -196,7 +198,10 @@ export function StickInputPanel({
         <span>최근 눌린 버튼</span>
         <strong>{recentButtonNumber === null ? "아직 없음" : `${recentButtonNumber}번`}</strong>
       </div>
-      <p className="simple-help">화면 값은 원본이며, 드론 조종에는 0.10 데드존이 적용됩니다.</p>
+      <p className="simple-help">
+        화면 값은 원본이며, 실제 비행에는 중앙 무시 범위 {deadZone.toFixed(2)}와
+        부드러운 조종 보정이 적용됩니다.
+      </p>
     </aside>
   );
 }

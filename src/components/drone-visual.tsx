@@ -2,10 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import type { DroneTransform } from "../simulator/drone-transform";
+import {
+  EMPTY_DRONE_SCENE,
+  type DroneScenePresentation,
+} from "../simulator/scene-presentation";
 
 interface DroneVisualProps {
   readTransform: () => DroneTransform;
+  readScene?: () => DroneScenePresentation;
 }
+
 
 function projectPoint(
   x: number,
@@ -24,6 +30,7 @@ function projectPoint(
 function drawDroneScene(
   canvas: HTMLCanvasElement,
   transform: DroneTransform,
+  scene: DroneScenePresentation,
   time: number,
   reduceMotion: boolean,
 ): void {
@@ -105,6 +112,128 @@ function drawDroneScene(
     );
     context.lineTo(point[0], point[1]);
     context.stroke();
+  }
+
+  for (const marker of scene.markers) {
+    const point = projectPoint(
+      marker.position.x - cameraX,
+      marker.position.y,
+      marker.position.z - cameraZ,
+      originX,
+      originY,
+      scale,
+    );
+    const radius = Math.max(0.35, marker.radius ?? 0.75) * scale;
+    const color = marker.completed
+      ? "#28a879"
+      : marker.active
+        ? "#ff7a3d"
+        : "#4b78c8";
+
+    context.save();
+    if (marker.kind === "gate") {
+      context.strokeStyle = color;
+      context.lineWidth = marker.active ? 7 : 5;
+      context.beginPath();
+      context.ellipse(point[0], point[1], radius * 0.72, radius, 0, 0, Math.PI * 2);
+      context.stroke();
+    } else if (
+      marker.kind === "start-pad" ||
+      marker.kind === "landing-pad"
+    ) {
+      context.translate(point[0], point[1]);
+      context.scale(1, 0.45);
+      context.fillStyle = marker.active ? "rgba(255, 122, 61, 0.22)" : "rgba(48, 110, 255, 0.14)";
+      context.strokeStyle = color;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(0, 0, radius, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      const ringScales =
+        marker.kind === "landing-pad"
+          ? [0.72, 0.46, 0.22]
+          : [0.55];
+      for (const ringScale of ringScales) {
+        context.beginPath();
+        context.arc(0, 0, radius * ringScale, 0, Math.PI * 2);
+        context.stroke();
+      }
+      if (marker.kind === "landing-pad") {
+        context.fillStyle = color;
+        context.beginPath();
+        context.arc(0, 0, Math.max(3, radius * 0.055), 0, Math.PI * 2);
+        context.fill();
+      }
+    } else if (marker.kind === "building" || marker.kind === "hospital") {
+      const buildingWidth = radius * 1.25;
+      const buildingHeight = Math.max(30, radius * 1.8);
+      context.fillStyle = marker.kind === "hospital" ? "#f4f8fb" : "#bfd2df";
+      context.strokeStyle = marker.kind === "hospital" ? "#d95757" : "#718da2";
+      context.lineWidth = 2;
+      context.fillRect(
+        point[0] - buildingWidth / 2,
+        point[1] - buildingHeight,
+        buildingWidth,
+        buildingHeight,
+      );
+      context.strokeRect(
+        point[0] - buildingWidth / 2,
+        point[1] - buildingHeight,
+        buildingWidth,
+        buildingHeight,
+      );
+      if (marker.kind === "hospital") {
+        context.fillStyle = "#d94040";
+        context.font = "700 18px sans-serif";
+        context.textAlign = "center";
+        context.fillText("H", point[0], point[1] - buildingHeight * 0.48);
+      }
+    } else if (marker.kind === "search-target") {
+      const pulse = 1 + Math.sin(time * 0.004) * 0.12;
+      context.strokeStyle = color;
+      context.setLineDash([5, 5]);
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(point[0], point[1], radius * 0.55 * pulse, 0, Math.PI * 2);
+      context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(point[0], point[1], 5, 0, Math.PI * 2);
+      context.fill();
+    } else if (marker.kind === "wind-zone") {
+      context.fillStyle = "rgba(73, 177, 218, 0.13)";
+      context.strokeStyle = "rgba(45, 137, 179, 0.7)";
+      context.setLineDash([8, 6]);
+      context.beginPath();
+      context.ellipse(point[0], point[1], radius, radius * 0.45, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    } else if (marker.kind === "arrow") {
+      context.strokeStyle = color;
+      context.fillStyle = color;
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(point[0] - radius * 0.5, point[1]);
+      context.lineTo(point[0] + radius * 0.5, point[1]);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(point[0] + radius * 0.5, point[1]);
+      context.lineTo(point[0] + radius * 0.2, point[1] - 10);
+      context.lineTo(point[0] + radius * 0.2, point[1] + 10);
+      context.closePath();
+      context.fill();
+    }
+
+    if (marker.label && marker.kind !== "building") {
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.font = "700 12px sans-serif";
+      context.textAlign = "center";
+      context.fillStyle = "#18324a";
+      context.fillText(marker.label, point[0], point[1] - radius - 10);
+    }
+    context.restore();
   }
 
   const ground = projectPoint(
@@ -220,15 +349,25 @@ function drawDroneScene(
   context.moveTo(center[0], center[1]);
   context.lineTo(nose[0], nose[1]);
   context.stroke();
+
+  if (scene.collisionPulse) {
+    context.fillStyle = "rgba(255, 93, 76, 0.13)";
+    context.fillRect(0, 0, w, h);
+  }
 }
 
-export function DroneVisual({ readTransform }: DroneVisualProps) {
+export function DroneVisual({ readTransform, readScene }: DroneVisualProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const readTransformRef = useRef(readTransform);
+  const readSceneRef = useRef(readScene);
 
   useEffect(() => {
     readTransformRef.current = readTransform;
   }, [readTransform]);
+
+  useEffect(() => {
+    readSceneRef.current = readScene;
+  }, [readScene]);
 
   useEffect(() => {
     let frame = 0;
@@ -245,6 +384,7 @@ export function DroneVisual({ readTransform }: DroneVisualProps) {
         drawDroneScene(
           canvas,
           readTransformRef.current(),
+          readSceneRef.current?.() ?? EMPTY_DRONE_SCENE,
           time,
           reduceMotion,
         );

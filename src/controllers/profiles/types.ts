@@ -9,7 +9,8 @@ export type ControllerOperation =
   | "start"
   | "takeoff"
   | "landing"
-  | "emergency";
+  | "emergency"
+  | "missionAction";
 
 export type ProfileSemanticControl =
   | "throttle"

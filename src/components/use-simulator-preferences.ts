@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  LEGACY_SIMULATOR_PREFERENCES_STORAGE_KEY,
   SIMULATOR_PREFERENCES_STORAGE_KEY,
   createDefaultSimulatorPreferences,
+  migrateLegacySimulatorPreferences,
   parseSimulatorPreferences,
   type SimulatorPreferences,
 } from "../simulator/settings";
@@ -29,10 +31,15 @@ export function useSimulatorPreferences(): {
         const stored = window.localStorage.getItem(
           SIMULATOR_PREFERENCES_STORAGE_KEY,
         );
-        if (stored) {
-          const parsed = parseSimulatorPreferences(JSON.parse(stored));
-          if (parsed) setPreferences(parsed);
-        }
+        const legacy = window.localStorage.getItem(
+          LEGACY_SIMULATOR_PREFERENCES_STORAGE_KEY,
+        );
+        const parsed = stored
+          ? parseSimulatorPreferences(JSON.parse(stored))
+          : legacy
+            ? migrateLegacySimulatorPreferences(JSON.parse(legacy))
+            : null;
+        if (parsed) setPreferences(parsed);
       } catch {
         // Storage is an optional convenience; safe defaults remain usable.
       } finally {

@@ -1,8 +1,8 @@
-# 바이로봇 조종기 진단 + 가상 드론 1차 시뮬레이터
+# 바이로봇 미래항공모빌리티 운항 훈련
 
-바이로봇 USB 조종기의 실제 입력을 웹브라우저에서 안정적으로 확인하고, 검증된 `Common ControllerState`로 테스트 격자 위의 가상 드론 한 대를 움직이는 프로젝트입니다. 아직 미래도시, 건물, 장애물, 미션, 점수 시스템은 구현하지 않습니다.
+바이로봇 USB 조종기의 실제 입력을 웹브라우저에서 안정적으로 읽고, 검증된 `Common ControllerState`로 조종법 안내부터 기초 훈련, 자격시험, 항공모빌리티 임무까지 진행하는 교육용 시뮬레이터입니다. 기존 Web Serial, RAW monitor, BYROBOT parser, CRC, 0x71 Joystick, 0x70 Button 진단 기능은 그대로 유지합니다.
 
-현재 목표는 다음 파이프라인을 검증하는 것입니다.
+현재 구현 파이프라인은 다음과 같습니다.
 
 ```text
 Physical USB Controller
@@ -13,33 +13,70 @@ Physical USB Controller
   → Common ControllerState
   → FlightController
   → FlightPhysics (`flight-model.ts`)
-  → DroneTransform
-  → DroneVisual
+      ├→ DroneTransform → DroneVisual
+      └→ ExperienceCoordinator
+          ├→ Tutorial / Training / Certification / Mission / Result
+          └→ DroneScenePresentation → DroneVisual
 ```
 
-장치를 선택한 것, 포트를 연 것, RAW 데이터를 받은 것, 패킷을 검증한 것, 실제 조종 입력이 바뀐 것을 각각 별도 상태로 표시합니다. 공식 Coding/E-Drone 계열의 `Joystick(0x71)` 8바이트와 `Button(0x70)` 3바이트 구조를 엄격한 길이 검사 뒤 해석하지만, 제품별 비행축 배정이 확인되지 않았다면 `throttle`, `yaw`, `pitch`, `roll`은 `0`이 아니라 `null`입니다.
+장치를 선택한 것, 포트를 연 것, RAW 데이터를 받은 것, 패킷을 검증한 것, 실제 조종 입력이 바뀐 것을 각각 별도 상태로 표시합니다. 공식 Coding/E-Drone 계열의 `Joystick(0x71)` 8바이트와 `Button(0x70)` 3바이트 구조를 엄격한 길이 검사 뒤 해석하지만, 제품별 비행축 배정이 확인되지 않았다면 `throttle`, `yaw`, `pitch`, `roll`은 `0`이 아니라 `null`입니다. 제품 모델과 USB 버튼 값도 확인 근거 없이 추측하지 않습니다.
 
-## 0. 기본 화면과 가상 드론 사용법
+## 0. 학생용 체험 흐름과 기본 조종법
 
-첫 화면은 일반 사용자를 위한 한글 UI입니다.
+첫 화면은 학생과 교사를 위한 한글 중심 UI입니다.
 
-- 왼쪽: USB 연결, 스틱 입력, 버튼 입력, 현재 준비 상태
-- 가운데: 밝은 테스트 격자와 가상 드론 한 대
-- 오른쪽: 왼쪽/오른쪽 스틱의 상하·좌우 숫자와 게이지, 최근 누른 버튼
-- 아래: **시동**, **이륙**, **착륙**, **위치 초기화**, **긴급 안전 착륙**
+- 상단: 조종기 연결, 현재 체험 단계, 비행 상태, 비행 속도
+- 단계 안내: 조종법 안내 → 기초 조종 훈련 → 조종 자격시험 → 임무 선택 → 실제 비행 임무 → 결과
+- 비행 HUD: 고도, 속도, 시간, 배터리, 현재 목표, 진행도, 충돌·강풍·저전력 경고
+- 중앙: 가상 드론과 단계별 링, 착륙장, 건물, 병원, 탐색 지점, 강풍 구역
+- 안전 기능: 항상 보이는 **긴급 안전 착륙**
 - 비행 설정: 속도, 조종 방식, 헤드리스 모드, 자세 안정화, 중앙 무시 범위, 감도, Expo
 - 기술 정보: **개발자 정보 보기**를 펼치면 기존 Serial/RAW/DataType/packet/CRC/calibration 화면이 그대로 표시됨
 
-검증된 0x71 stick 순서 `[Left X, Left Y, Right X, Right Y]`에는 다음 기본 의미 배치를 적용합니다. 현재 실제 조종 테스트 결과에 따라 **Roll만 반전**하며 Throttle, Yaw, Pitch 방향은 바꾸지 않습니다.
+### 자동 연결과 자동 중앙 보정
+
+처음 사용하는 브라우저와 배포 주소에서는 **조종기 처음 연결하기**를 한 번 눌러 Chrome의 Serial 장치 선택 창에서 포트를 승인해야 합니다. 유효한 BYROBOT 패킷을 확인한 뒤 VID/PID 식별 정보를 저장하며, 같은 origin에서 다음 접속부터는 `navigator.serial.getPorts()`에 남아 있는 승인 포트를 자동으로 엽니다. 승인 포트가 여러 개인데 저장된 식별 정보와 맞는 포트를 찾지 못하면 임의로 선택하지 않고 다시 사용자 선택을 요구합니다. 사이트 데이터 삭제, 다른 브라우저·배포 주소 사용, 권한 철회 뒤에는 다시 승인해야 합니다.
+
+포트를 열면 기존 Controller Ping과 0x71/0x70 Request 1회를 자동으로 시도합니다. 연결 후에는 양쪽 스틱을 놓아 두세요. 네 축이 중립 범위 `±0.32` 안에 있을 때 약 `0.9초`, 최소 4개 표본을 평균해 중앙값을 자동으로 맞춥니다. 스틱을 잡고 있으면 극단값을 중앙으로 저장하지 않고 중립을 기다립니다. 필요하면 **스틱 중앙 다시 맞추기**를 누를 수 있으며, 정밀 범위·축 확인용 수동 캘리브레이션은 개발자 정보에 그대로 남아 있습니다.
+
+### BYROBOT Mode 2 조종
+
+검증된 0x71 stick 순서 `[Left X, Left Y, Right X, Right Y]`에는 다음 기본 의미 배치를 적용합니다. 실제 하드웨어 테스트 결과에 따라 **Yaw와 Roll 두 축을 반전**하고 Throttle과 Pitch 방향은 유지합니다.
 
 ```text
 Left Y  → Throttle → 상승/하강
-Left X  → Yaw      → 좌우 회전
+Left X  → Yaw      → 입력 부호 반전 후 좌우 회전
 Right Y → Pitch    → 전진/후진
 Right X → Roll     → 입력 부호 반전 후 기체 기준 좌우 이동
 ```
 
-빨간 선은 기체의 앞방향입니다. 오른쪽 스틱을 오른쪽으로 움직이면 드론이 이 빨간 앞방향을 기준으로 기체 오른쪽으로 이동해야 합니다. 현재 드론 외형과 빨간 선은 조종 시험용 임시 시각 요소이며, 이번 단계에서는 디자인을 교체하지 않습니다.
+왼쪽 스틱 오른쪽은 기체의 오른쪽/시계 방향 Yaw, 오른쪽 스틱 오른쪽은 기체 기준 오른쪽 이동이어야 합니다. 빨간 선은 기체의 앞방향입니다.
+
+학생용 **바이로봇 기본 조종**은 Mode 2 스틱 시동과 실제 스로틀 이륙이 기본입니다. 다만 연결 점검, 접근성 보조와 수업 복구를 위해 화면 아래의 **시동 / 이륙 / 착륙** 버튼도 유지합니다. 화면 시동은 동일한 `ARMED` 상태를 만들고, 화면 이륙은 `TAKEOFF → FLIGHT` 안전 상승을 실행하므로 튜토리얼과 자격시험 상태 기록에서도 빠지지 않습니다.
+
+1. 양쪽 스틱을 아래쪽 안으로 모읍니다.
+   - 왼쪽 스틱: 아래+오른쪽, 약 5시 방향
+   - 오른쪽 스틱: 아래+왼쪽, 약 7시 방향
+2. 지정 방향으로 raw Throttle/Pitch/Roll은 `-0.70` 이하, raw Yaw는 `+0.70` 이상인 상태를 끊지 않고 `3초` 유지합니다. 중간에 임계값을 벗어나면 3초 타이머는 처음부터 다시 시작합니다.
+3. 화면이 `시동 준비`를 거쳐 `시동 완료(ARMED)`가 되고 프로펠러가 회전하는지 확인합니다.
+4. 왼쪽 스로틀을 천천히 올립니다. raw Throttle이 `0.22` 이상이 되어 실제로 지면을 벗어나면 `FLIGHT`로 전환됩니다.
+5. 착륙할 때는 스로틀을 낮춰 직접 천천히 하강합니다. raw Throttle `-0.55` 이하를 유지하고 지면 `0.12m` 이내에서 약 `0.65초` 안정되면 모터를 정지하고 `READY`로 돌아갑니다.
+
+즉 학생 비행 상태는 다음 흐름입니다.
+
+```text
+READY(대기)
+  → ARMING(Mode 2 시동 동작을 3초 유지)
+  → ARMED(시동 완료, 지상)
+  → FLIGHT(실제 스로틀로 이륙하고 비행)
+  → READY(저스로틀로 착륙 완료)
+```
+
+기존 `START/TAKEOFF/LANDING` 명령 경로는 사용자 설정과 교사용 점검의 호환성을 위해 내부에 남아 있지만, 일반 학생의 기본 절차는 위 Mode 2 흐름입니다.
+
+긴급 동작은 특정 제품의 `0x70` bit를 추측하지 않습니다. 검증된 기본 L 버튼이 없는 조종기는 화면에서 **긴급 기능** 버튼을 한 번 학습합니다. 이후 raw Throttle이 `-0.75` 이하인 상태에서 그 학습된 L 버튼을 함께 눌렀을 때만 긴급 안전 착륙을 한 번 실행합니다. 화면의 **긴급 안전 착륙**도 항상 남아 있습니다. 긴급 기능은 공중에서 모터를 즉시 꺼 추락시키는 기능이 아니라 수평 이동을 중립화하고 감속 하강하는 교육용 안전 착륙입니다.
+
+### 조종감 설정
 
 학생용 입력 처리 순서는 다음과 같습니다.
 
@@ -52,24 +89,6 @@ Dead Zone 재조정 → Expo Curve → 사용자 감도 → 비행 속도 배율
 상승 중 실수로 들어오는 작은 회전을 줄이기 위해 raw Throttle이 `0.45` 이상이고 raw Yaw의 절댓값이 `0.20` 이하이면 Yaw만 0으로 억제합니다. 이 범위를 넘는 명확한 대각선 조작은 상승과 Yaw를 동시에 반영합니다.
 
 조종기 연결이 끊기거나 입력 준비 조건을 잃거나 최신 stick 입력이 500ms 이상 멈추면 잔류 속도·회전 입력을 즉시 중립화합니다. 탭이 백그라운드로 가도 motion을 중립화하고 복귀 시 큰 frame delta를 적용하지 않습니다.
-
-### 비행 상태
-
-```text
-READY(대기)
-  → START(시동 완료)
-  → TAKEOFF(1.4m 자동 이륙)
-  → FLIGHT(비행 가능)
-  → LANDING(착륙 중)
-  → STOP(착륙 완료)
-```
-
-- **대기**: 지상, 프로펠러 정지, 수동 스틱 비행 입력 비활성
-- **시동 완료**: 프로펠러가 회전하지만 기체는 지상에 있고 수동 이동은 제한
-- **이륙 중**: 스로틀을 계속 올리지 않아도 약 `1.4m`까지 자동 상승
-- **비행 가능**: 이 상태에서만 Throttle/Yaw/Pitch/Roll 수동 조종 활성
-- **착륙 중**: 현재 위치에서 하강하며 지면 근처에서 속도를 줄인 뒤 STOP
-- **긴급 안전 착륙**: 수평 이동 명령을 무시하고 안정적으로 감속·하강한 뒤 모터 정지. 완료 후 **위치 초기화**로 긴급 상태를 해제
 
 기본 비행 설정은 다음과 같습니다.
 
@@ -90,11 +109,27 @@ READY(대기)
 - **자세 안정화 켬**: 스틱을 놓으면 짧게 감속한 뒤 속도를 0으로 안정시키고 기울기를 빠르게 수평으로 복귀
 - **자세 안정화 끔**: 감속과 기울기 복귀를 느리게 해 관성을 조금 더 유지
 
-화면 버튼은 조종기 연결 전에도 마우스로 비행 절차를 시험할 수 있습니다. **바이로봇 기본 조종**에서는 ControllerProfile이 제공하는 검증된 축과 버튼만 사용하며 버튼 설정 UI를 숨깁니다. 현재 지원 프로필 가운데 USB `0x70` button bit까지 검증되어 자동 실행할 수 있는 기본 시동/이륙/착륙/긴급 버튼은 **아직 없습니다**. 따라서 기본 모드에서는 화면 버튼으로 비행 절차를 실행합니다.
+**사용자 설정**을 선택하면 Throttle/Yaw/Pitch/Roll의 Axis와 각 반전 여부, 시동/이륙/착륙/긴급/촬영·확인 버튼 설정이 나타납니다. 설정 중 누른 버튼은 즉시 명령으로 실행되지 않으며, 같은 버튼을 다른 기능에 지정하면 이전 지정은 해제됩니다.
 
-**사용자 설정**을 선택하면 Throttle/Yaw/Pitch/Roll의 Axis와 각 반전 여부, 시동/이륙/착륙/긴급 버튼 설정이 나타납니다. 각 **설정**을 누른 뒤 실제 버튼 하나를 누르면 해당 기능에 연결됩니다. 설정 중 누른 버튼은 즉시 비행 명령으로 실행되지 않으며, 같은 버튼을 다른 기능에 지정하면 이전 지정은 해제됩니다.
+속도, 조종 방식, 헤드리스, 자세 안정화, Dead Zone, 감도, Expo, 사용자 축 설정은 `byrobot-drone-simulator-preferences-v2`로 저장합니다. 이전 v1의 정확한 기본 축 설정은 하드웨어 테스트로 확정한 Yaw 방향을 반영해 한 번만 안전하게 이전하고, 사용자가 직접 바꾼 축 설정은 보존합니다. 사용자 버튼 설정은 `byrobot-drone-button-mappings-v3`에 컨트롤러 출처를 함께 저장해 다른 출처의 조종기에서는 실행되지 않습니다. 모두 개인정보가 아닌 브라우저 `localStorage` 설정입니다. **기본값 복원**은 비행 설정과 사용자 축 설정을 초기화하며, 버튼 매핑은 기능별 **지우기**로 해제합니다.
 
-속도, 조종 방식, 헤드리스, 자세 안정화, Dead Zone, 감도, Expo, 사용자 축 설정은 `byrobot-drone-simulator-preferences-v1`로 저장합니다. 사용자 버튼 설정은 `byrobot-drone-button-mappings-v2`에 컨트롤러 출처를 함께 저장해 다른 출처의 조종기에서는 실행되지 않습니다. 모두 개인정보가 아닌 브라우저 `localStorage` 설정입니다. **기본값 복원**은 비행 설정과 사용자 축 설정을 초기화하며, 버튼 매핑은 사용자 설정 화면에서 기능별 **지우기**로 해제합니다.
+### 교육 과정
+
+1. **조종법 안내 6단계**: Mode 2 시동, 실제 스로틀 이륙, 오른쪽 Yaw, 전진, 오른쪽 Roll 이동, 저스로틀 착륙을 한 단계씩 실제 비행 행동으로 완료합니다.
+2. **기초 비행 훈련**: 순서가 지정된 링 3개를 통과하고 마지막 착륙 패드에 정밀 착륙합니다. 뒤 링을 먼저 지나도 통과로 처리하지 않으며 링 테두리와 장애물 접촉은 충돌로 기록합니다.
+3. **90초 조종 자격시험**: 시동, 실제 이륙, 링 3개, Yaw 회전, 고도 변경, 정밀 착륙을 모두 완료해야 합니다. 점수는 링 30점, 충돌 없음 20점, 비행 안정성 20점, 착륙 정확도 20점, 시간 10점이며 필수 동작을 모두 수행하고 총점 `70점` 이상이어야 자격을 얻습니다.
+4. **항공모빌리티 임무 선택**: 자격을 얻은 뒤 아래 두 임무 중 하나를 선택합니다.
+   - **응급 의약품 운송**: 병원 A에서 출발해 건물과 강풍 구역을 피하고 `180초` 안에 병원 B 착륙장에 착륙합니다.
+   - **재난지역 탐색**: `210초` 안에 목표 3곳 가까이에서 학습된 **촬영 / 확인** 버튼을 눌러 확인한 뒤 출발 착륙장으로 복귀합니다. 특정 버튼 값을 추측하지 않습니다.
+5. **결과**: 자격시험은 항목별 점수와 합격 여부를, 임무는 총점과 화면에 표시되는 안전·안정성·착륙·임무 수행 별점, 활동 강점 유형과 직업 메시지를 보여 줍니다.
+
+임무 배터리는 100%에서 시작하며 대기, 이동, 스로틀 사용량과 초보/일반/고속 배율에 따라 감소합니다. 고속일수록 더 빨리 줄고 `20%` 이하에서는 HUD와 피드백으로 저전력 경고를 표시합니다. HUD는 고도·속도·남은 시간·배터리·현재 목표·진행도와 충돌/강풍/긴급 경고를 계속 보여 줍니다.
+
+### 교사용 기능과 임시 시각 자산
+
+접힌 **교사용 테스트 기능**에는 훈련 단계 초기화, 자격시험 바로 시작, 두 임무 바로 시작, 배터리 초기화, 드론 위치 초기화가 있습니다. 수업 준비와 기능 점검용이며 학생의 정상 진도 검증을 대신하지 않습니다.
+
+현재 드론, 링, 착륙장, 건물, 병원, 탐색 지점, 강풍 표시는 고품질 미래도시 자산이 아니라 Canvas로 그린 임시 교육용 도형입니다. 충돌과 경로 판정은 데이터 기반 도메인 로직에 있고, 시각 요소는 `DroneVisual`/`DroneScenePresentation`으로 분리되어 있어 향후 GLB/GLTF와 미래도시 외형으로 교체할 수 있습니다.
 
 ## 1. 실행 방법
 
@@ -133,7 +168,7 @@ npm run build
 
 `LINK` 표시는 조종기가 USB Link 모드에 들어갔다는 뜻이지, 웹페이지가 실제 조종 입력을 수신했다는 뜻은 아닙니다.
 
-BYROBOT 공식 Coding Drone/E-Drone 입력 예제는 포트를 연 뒤 Controller로 Ping을 보냅니다. E-Drone 펌웨어 기록에도 PC에서 데이터를 받은 뒤 조이스틱/버튼 전송을 시작한다고 명시되어 있습니다. 그래서 이 앱에는 별도의 **BYROBOT 입력 활성화 (Controller Ping)** 버튼이 있습니다.
+BYROBOT 공식 Coding Drone/E-Drone 입력 예제는 포트를 연 뒤 Controller로 Ping을 보냅니다. E-Drone 펌웨어 기록에도 PC에서 데이터를 받은 뒤 조이스틱/버튼 전송을 시작한다고 명시되어 있습니다. 앱은 포트를 열 때 이 Ping과 입력 Request 1회를 자동 시도하며, 수동 재전송과 비교 진단을 위한 **BYROBOT 입력 활성화 (Controller Ping)** 버튼도 개발자 정보에 유지합니다.
 
 ## 4. Gamepad 테스트 방법
 
@@ -153,7 +188,15 @@ Generic Gamepad 프로필에는 검증된 기본 축이나 버튼 배치가 없�
 
 ## 5. Serial 테스트 방법
 
-현재 스마트 조종기의 1차 테스트 순서입니다.
+학생의 일반 연결 순서는 다음과 같습니다.
+
+1. 조종기를 USB LINK 모드로 연결하고 Chrome에서 배포 주소 또는 localhost를 엽니다.
+2. 처음 사용하는 origin이면 **조종기 처음 연결하기**를 누르고 COM 포트를 한 번 승인합니다. 선택 직후 포트를 열고 Ping/Request를 자동 시도합니다.
+3. 이미 승인된 포트가 하나이거나 저장된 VID/PID와 일치하면 다음 방문과 물리 재연결 때 자동으로 연결됩니다.
+4. 양쪽 스틱을 놓고 `스틱 중앙: 정상`과 `조종 준비 완료`가 될 때까지 잠시 기다립니다.
+5. 자동 연결에 실패하거나 승인 포트가 여러 개면 사용자가 사용할 포트를 다시 선택합니다.
+
+아래는 접힌 **개발자 정보 보기**에서 현재 스마트 조종기의 연결과 입력 획득을 수동으로 점검하는 순서입니다.
 
 1. Chrome에서 배포 주소 또는 localhost를 엽니다.
 2. **Serial 장치 선택**을 누릅니다.
@@ -284,7 +327,7 @@ BYROBOT 공통 프레임 성공 조건:
 
 Serial의 `CONTROLLER INPUT ACTIVE`는 CRC-valid 0x71의 실제 stick 변화와 공식 0x70의 버튼 상호작용이 모두 확인된 경우에만 PASS입니다. 이 증거는 연결 세션 동안 유지되고 재연결 시 초기화됩니다. 입력 계층의 `조종 준비 완료`는 여기에 네 의미 축의 검증된 기본 profile 또는 사용자 mapping까지 완성된 경우에만 표시합니다.
 
-이 입력 준비 상태와 비행 상태기계의 `READY(대기)`는 서로 다른 상태입니다. 조종기가 준비되어도 드론은 먼저 대기 상태에 있으며, 시동과 이륙 절차를 거친 뒤에만 수동 비행 입력을 받습니다.
+이 입력 준비 상태와 비행 상태기계의 `READY(대기)`는 서로 다른 상태입니다. 조종기가 준비되어도 드론은 먼저 대기 상태에 있으며, Mode 2 조합을 3초 유지해 `ARMED`로 만든 후 실제 스로틀로 이륙해야 `FLIGHT`의 수동 비행 입력을 받습니다.
 
 ## 9. 오류와 확인 순서
 
@@ -356,6 +399,14 @@ smart-controller_vid-xxxx_pid-yyyy_57600_button-1.txt
 
 ## 12. 캘리브레이션
 
+### 일반 사용자 자동 중앙 보정
+
+Serial 연결 뒤에는 학생이 별도 축 설정을 하지 않아도 되도록 자동 중앙 보정을 먼저 수행합니다. 네 스틱 축이 모두 중립 후보 범위 `±0.32` 안에 있을 때만 표본을 받으며, 약 `0.9초` 동안 최소 4개 표본을 평균해 각 축의 중앙값으로 사용합니다. 연결할 때 스틱을 기울이고 있으면 그 값을 중앙으로 저장하지 않고 스틱이 놓일 때까지 기다립니다.
+
+화면의 **스틱 중앙 다시 맞추기**로 언제든 다시 시작할 수 있습니다. 자동 중앙값은 검증된 BYROBOT 기본 profile과 사용자 설정의 고정 Axis mapping 모두에 적용됩니다. 아래 수동 calibration은 제품 조사와 범위 보정이 필요할 때만 개발자 정보에서 사용합니다.
+
+### 개발자 수동 축 캘리브레이션
+
 각 raw axis에 다음을 저장합니다.
 
 - raw current
@@ -376,7 +427,7 @@ smart-controller_vid-xxxx_pid-yyyy_57600_button-1.txt
 5. 범위 기록을 끔
 6. 실제 확인 결과에 맞춰 각 raw axis를 의미 축에 배정
 
-엄격하게 해석된 BYROBOT 0x71 8-byte profile에는 기본 배치 `Left X→Yaw`, `Left Y→Throttle`, `Right X→Roll`, `Right Y→Pitch`를 적용하고 **Right X→Roll만 반전**합니다. 다른 세 축의 방향은 유지합니다. 이 preset은 codec ID, DataType `0x71`, payload 길이 `8`, axis 수 `4`가 모두 맞을 때만 활성화됩니다.
+엄격하게 해석된 BYROBOT 0x71 8-byte profile에는 기본 배치 `Left X→Yaw`, `Left Y→Throttle`, `Right X→Roll`, `Right Y→Pitch`를 적용합니다. 실제 사용자 검증 결과에 따라 **Left X→Yaw와 Right X→Roll의 입력 부호를 반전**하고, Throttle과 Pitch 방향은 바꾸지 않습니다. 이 preset은 codec ID, DataType `0x71`, payload 길이 `8`, axis 수 `4`가 모두 맞을 때만 활성화됩니다.
 
 **사용자 설정**에서는 저장된 Axis/반전 설정을 사용합니다. 사용자가 개발자 캘리브레이션을 시작하고 네 축의 중앙·범위·의미 배정을 모두 완료한 경우에는 그 캘리브레이션이 저장된 고정 Axis 설정보다 우선합니다. 다른 제품 profile은 같은 채널 순서라고 가정하지 않으며, adapter가 검증한 raw axis 순서 또는 사용자 설정이 필요합니다. `min < center < max`가 확보되지 않은 calibration 값은 정규화하지 않습니다.
 
@@ -385,8 +436,9 @@ smart-controller_vid-xxxx_pid-yyyy_57600_button-1.txt
 ```text
 src/controllers/
 ├─ types.ts                         # ControllerState, adapter, diagnostics, errors
-├─ controller-manager.ts            # registry, ranking, active adapter, READY 판정
+├─ controller-manager.ts            # registry, ranking, active adapter, 입력 준비 판정
 ├─ calibration.ts                   # axis 관측/중앙/범위/dead-zone/정규화
+├─ center-calibration.ts            # 중립 확인 후 자동 중앙값 표본·평균
 ├─ profiles/
 │  ├─ types.ts                       # 축 preset, 조작 gesture, 검증 근거 타입
 │  ├─ byrobot-profiles.ts            # Smart/PRC-95/Battle/Generic/Gamepad 프로필
@@ -394,6 +446,7 @@ src/controllers/
 │  ├─ operation-discovery.ts         # 기본 조작 확인 기록용 순수 모델
 │  └─ index.ts                       # 프로필 공개 API
 ├─ connections/
+│  ├─ serial-auto-connect.ts        # 승인된 port 재발견·VID/PID 일치·다중 port 보수 처리
 │  └─ serial-connection.ts          # request 이후 open/read/write/cancel/close 수명주기
 ├─ diagnostics/
 │  ├─ change-detector.ts            # RAW/packet 변화 휴리스틱
@@ -414,24 +467,38 @@ src/controllers/
 
 src/simulator/
 ├─ settings.ts                       # 저장 가능한 수업용 설정과 사용자 축 mapping
+├─ mode2-gesture-detector.ts         # Mode 2 3초 시동 gesture 진행·초기화
 ├─ flight-controller.ts              # ControllerState, stale/disconnect 안전, 명령 조정
 ├─ flight-model.ts                   # 입력 보정, 상태기계, 결정론적 비행 물리
+├─ experience-coordinator.ts         # 튜토리얼·코스·시험·미션을 비행 상태와 조율
+├─ scene-presentation.ts             # 장면 marker/collision 표시용 중립 모델
 ├─ drone-transform.ts                # 물리 상태를 렌더링용 transform으로 변환
 └─ button-mapping.ts                 # 출처별 버튼 캡처와 rising-edge 명령 매핑
+
+src/experience/
+├─ experience-state.ts               # START부터 RESULT까지 수업 단계 reducer
+├─ tutorial-runtime.ts               # 실제 비행 6단계 조작 안내
+├─ training.ts                       # 순서가 있는 3-gate 훈련·충돌·착륙 판정
+├─ certification.ts                  # 90초 시험 요건·가중치 채점
+├─ missions.ts                       # 의료품 운송·재난 탐색 정의와 runtime
+├─ battery.ts                        # 비행 입력·속도 단계별 배터리 소모
+├─ results.ts                        # 시험·미션 결과와 강점/직업 메시지
+└─ teacher-tools.ts                  # 수업 준비용 교사 단축 명령
 
 src/components/
 ├─ controller-diagnostics.tsx        # 전체 조립과 접이식 개발자 진단 UI
 ├─ controller-simple-ui.tsx          # 한글 연결/스틱 상태
 ├─ drone-simulator.tsx               # 비행 UI와 FlightController 조립
-├─ drone-visual.tsx                  # 현재 임시 드론 Canvas 렌더링만 담당
+├─ drone-visual.tsx                  # 임시 드론·코스 marker Canvas 렌더링만 담당
 ├─ flight-settings-panel.tsx         # 수업용 비행 설정
 ├─ use-simulator-preferences.ts      # localStorage 설정 수명주기
-└─ byrobot-operation-capture.tsx     # 프로필 개발용 기본 조작 증거 기록
+├─ byrobot-operation-capture.tsx     # 프로필 개발용 기본 조작 증거 기록
+└─ experience/                       # 안내, HUD, 미션 선택, 결과, 교사 UI
 ```
 
 Web Serial 연결/RAW 처리 핵심은 `src/controllers/adapters/byrobot-serial-base.ts`, 순수 stream parser는 `src/controllers/protocols/byrobot/parser.ts`에 있습니다. 이 기존 경로는 비행 구현과 분리되어 있습니다.
 
-시뮬레이터는 packet/Serial 모듈을 직접 읽지 않고 오직 `ControllerState` 안의 의미 축과 protocol-neutral `buttonTransitions`만 입력으로 받습니다. `FlightController`는 연결 해제·stale input 안전과 상태 명령을 담당하고, `flight-model.ts`는 비행 물리만 계산합니다. `DroneTransform`은 위치·Yaw·기울기·프로펠러 속도만 `DroneVisual`에 전달합니다. 따라서 향후 Canvas 임시 외형을 GLB/GLTF 모델로 바꿔도 USB, parser, ControllerState, 비행 로직을 수정할 필요가 없습니다. Serial과 Gamepad adapter는 같은 공통 버튼 전이 형식을 생산합니다.
+시뮬레이터는 packet/Serial 모듈을 직접 읽지 않고 오직 `ControllerState` 안의 의미 축과 protocol-neutral `buttonTransitions`만 입력으로 받습니다. `FlightController`는 연결 해제·stale input 안전과 상태 명령을 담당하고, `flight-model.ts`는 비행 물리를 계산합니다. `ExperienceCoordinator`는 그 비행 상태를 읽어 튜토리얼·훈련·시험·미션을 진행하고, 한정된 강풍/충돌 결과와 중립 `DroneScenePresentation`을 되돌려줍니다. `DroneTransform`은 위치·Yaw·기울기·프로펠러 속도만 `DroneVisual`에 전달합니다. 따라서 향후 Canvas 임시 외형을 GLB/GLTF 모델로 바꿔도 USB, parser, ControllerState, 비행·수업 로직을 수정할 필요가 없습니다. Serial과 Gamepad adapter는 같은 공통 버튼 전이 형식을 생산합니다.
 
 ## 14. BYROBOT parser에서 확인된 것
 
@@ -476,7 +543,7 @@ parser 테스트는 다음을 포함합니다.
 9. 제품별 Request 가능 DataType/획득 방식을 adapter policy로 override
 10. `ControllerProfile`에 검증된 축 preset, 모델 상태, 출처 링크를 기록하고 adapter의 `controllerProfile`로 제공
 11. raw axis 순서를 먼저 노출하고 의미 축은 calibration/profile로 분리
-12. 시동/이륙/착륙/긴급 조작은 공식 물리 버튼 설명만으로 만들지 않고, 실제 USB 입력까지 확인된 경우에만 executable 기본 gesture로 등록. 프로필은 버튼 down, 제품별 길게 누르기 시간, 다중 버튼, 스틱 조합, 스틱+버튼 chord를 표현할 수 있음
+12. 시동/이륙/착륙/긴급/촬영·확인 조작은 공식 물리 버튼 설명만으로 만들지 않고, 실제 USB 입력까지 확인된 경우에만 executable 기본 gesture로 등록. 프로필은 버튼 down, 제품별 길게 누르기 시간, 다중 버튼, 스틱 조합, 스틱+버튼 chord를 표현할 수 있음
 13. CRC/length/축/버튼 변화와 잘못된 프로필 차단 테스트 추가
 
 제품 adapter를 추가해도 3D 시뮬레이터나 게임 코드는 수정하지 않습니다. 이후 시뮬레이터는 Common ControllerState만 구독합니다.
@@ -499,32 +566,42 @@ parser 테스트는 다음을 포함합니다.
 
 - 모든 브라우저 Gamepad API 장치의 raw axes/buttons/info
 - Web Serial 포트 선택, 9600/57600/115200, 8N1
+- 최초 1회 사용자 승인 후 `navigator.serial.getPorts()`와 저장된 VID/PID 정보를 이용한 보수적 자동 재연결
 - 공식 BYROBOT device-addressed frame 복원과 CRC 검증
 - 같은 start code를 쓰는 legacy profile을 별도 정의할 수 있는 parser 구조
 - Generic BYROBOT Serial 진단과 명시적인 Coding/E-Drone input profile 후보
 - RAW 변화 관찰, 최근 100개 로그, 복사/일시정지/지우기
-- 공식 Controller Ping을 통한 입력 활성화 시도
+- 포트 open 후 공식 Controller Ping과 0x71/0x70 Request 1회 자동 시도, 수동 진단 제어 유지
 - CRC-valid DataType별 최근 5초 count와 동일 DataType payload 변화 표시
 - 공식 Coding/E-Drone 8-byte Joystick과 3-byte Button strict decode
 - Left X/Y, Right X/Y, direction/event, button bitmask/event 실시간 표시
 - 공식 Request 1회 및 사용자 제어 진단 polling fallback
+- 스틱이 중립일 때만 작동하는 약 0.9초 자동 중앙 보정과 수동 재시작
 - calibration 결과를 실제 mapped Common ControllerState로 projection
 - 사용자 지정 Gamepad axis calibration/mapping
 - 한글 중심의 연결·입력 상태와 실시간 stick 게이지
 - 기존 기술 진단 전체를 접이식 **개발자 정보 보기**로 보존
-- strict 0x71 조건을 통과한 프로필의 기본 stick 배치, Roll-only 반전, 사용자 설정/calibration override
+- strict 0x71 조건을 통과한 프로필의 기본 stick 배치, Yaw·Roll 부호 보정, 사용자 설정/calibration override
 - Dead Zone 재조정, Expo, 감도, 프레임 독립 exponential smoothing, 긴 frame delta 제한
 - 상승 중 작은 Yaw 억제와 명확한 대각선 조작 보존
 - 초보 35% / 일반 65% / 고속 100% 비행 속도
 - 헤드리스 모드와 자세 안정화 ON/OFF
-- READY/START/TAKEOFF/FLIGHT/LANDING/STOP/EMERGENCY 상태기계
-- 1.4m 자동 이륙, 지면 근처 감속 착륙, 긴급 안전 착륙
-- 화면 시동/이륙/착륙/위치 초기화/긴급 안전 착륙 버튼
+- 학생 기본 조종의 `READY → ARMING → ARMED → FLIGHT → READY` 상태와 `EMERGENCY`; 기존 START/TAKEOFF/LANDING 명령은 사용자 설정·교사 점검 호환용으로 유지
+- Mode 2 스틱 조합 3초 시동, ARMED 후 실제 스로틀로 이륙, 저스로틀 유지로 직접 착륙
+- 학습한 논리 L 버튼+스로틀 down 조합의 1회성 긴급 안전 착륙과 화면 긴급 안전 착륙
 - 빠른 0x70 down→up과 같은 timestamp의 연타 순서를 보존하는 128-transition button journal
-- 사용자 설정에서 실제 조종기 버튼을 시동/이륙/착륙/긴급에 지정하는 source-scoped 매핑
+- 사용자 설정에서 실제 조종기 버튼을 시동/이륙/착륙/긴급/촬영·확인에 지정하는 source-scoped 매핑
 - 수업용 비행 설정과 사용자 Axis/반전 설정의 localStorage 저장
 - ControllerProfile과 기본 조작 증거 기록 구조
-- FlightController/FlightPhysics/DroneTransform/DroneVisual 분리
+- Mode 2·실제 이륙·Yaw·전진·Roll·저스로틀 착륙을 순서대로 완료하는 6단계 조종 안내
+- 순서가 정해진 3개 gate, 장애물, 정밀 착륙을 포함한 기초 비행 훈련
+- 90초 안에 시동·이륙·3-gate·Yaw 60°·고도 0.8m 변화·정상 착륙을 요구하는 100점 자격시험과 70점 합격 기준
+- 의료품 운송(180초, 강풍 구역, 병원 B 착륙)과 재난 탐색(210초, 3개 목표 확인, 원점 복귀) 미션
+- 100%에서 시작해 대기·이동·스로틀·속도 단계에 따라 소모되는 배터리와 20% 이하 저전력 경고
+- 고도·속도·시간·배터리·목표·진행도·충돌/강풍/긴급 경고 HUD과 시험/미션 결과 화면
+- 훈련 초기화, 시험·두 미션 즉시 시작, 배터리·드론 위치 초기화를 포함한 접이식 교사 테스트 기능
+- FlightController/FlightPhysics/DroneTransform/DroneVisual과 ExperienceCoordinator/DroneScenePresentation 분리
+- 현재 드론, gate, 착륙장, 건물, 병원, 탐색 지점, 강풍 구역은 고품질 미래도시가 아닌 Canvas 기반 임시 교육용 자산
 
 ### ControllerProfile 상태
 
@@ -547,12 +624,14 @@ Battle Drone 공식 사용자 매뉴얼에는 대기/비행 상태에서 물리 
 - BYROBOT Battle Drone Controller의 실제 USB capture가 Coding/E-Drone 8/3-byte profile과 일치하는지
 - PRC-95/Battle Drone 등 다른 제품 profile의 throttle/yaw/pitch/roll 의미 채널 배정
 - Smart/PRC-95/Battle의 시동/이륙/착륙/긴급 물리 조작과 USB `0x70` button ID/bit의 대응
+- 같은 origin에서 승인 포트 자동 재연결, 자동 중앙 보정, Mode 2 3초 시동, ARMED 후 실제 스로틀 이륙·저스로틀 착륙의 연속 실기
+- 학습한 L 버튼+스로틀 down 긴급 조합과 튜토리얼·3-gate 훈련·90초 자격시험·두 미션의 실제 조종기 end-to-end 수업 검증
 
 Smart/PRC-95/Battle 제품 placeholder는 기본적으로 RAW-only codec과 Request 비활성 정책을 사용합니다. 실제 모델/캡처 근거가 확보되기 전에는 Coding/E-Drone layout을 자동 상속하지 않습니다. 현재 진단 화면의 Generic adapter만 주소 `Controller(0x20) → Base(0x70)`, 8/3-byte 길이, 축 범위를 모두 검증하는 Coding/E-Drone 공식 profile 후보를 명시적으로 사용합니다.
 
 공식 Coding Drone 정의의 `0x00032004 = Battle Drone Controller USB`는 match 근거로만 준비되어 있으며, 실제 Information 응답을 받기 전에는 Battle Drone 모델로 확정하지 않습니다. PRC-95를 공식 제품명 `BATTLE DRONE (BRB-95)`와 같은 제품이라고 가정하지 않습니다.
 
-사용자 환경에서는 기존 Serial 연결, 0x71 stick, 0x70 button, ControllerState와 가상 드론의 상승/하강·전진/후진·Yaw·Roll 조종까지 정상 작동했다고 전달받았습니다. 이 개발 환경 자체에는 실제 조종기가 연결되어 있지 않으므로 이번에 추가한 Roll 방향 보정, Expo, 속도 단계, 헤드리스, 자세 안정화, 상태기계의 실제 조종감까지 검증했다고 임의로 주장하지 않습니다. 해당 항목은 아래 실기 순서로 다시 확인해야 합니다.
+사용자 환경에서는 기존 Serial 연결, 0x71 stick, 0x70 button, ControllerState와 가상 드론의 상승/하강·전진/후진·Yaw·Roll 조종까지 정상 작동했다고 전달받았습니다. 이 개발 환경 자체에는 실제 조종기가 연결되어 있지 않습니다. 따라서 추가된 자동 재연결·자동 센터, Yaw/Roll 방향 보정, Mode 2 시동·실제 이륙·착륙, 학습 L 긴급 조합, 조종감 설정, 전체 교육 과정을 실제 하드웨어로 검증했다고 임의로 주장하지 않습니다. 순수 로직의 자동 테스트는 별도로 있지만 실제 조종기·Chrome 권한·수업 환경 검증을 대신하지 않으며, 아래 절차로 확인해야 합니다. 현재 **실행 가능한 제품별 기본 버튼 profile이 확정된 모델은 없습니다.**
 
 ## 17. 미지원 조종기 연결 시 확보할 정보
 
@@ -569,43 +648,59 @@ Smart/PRC-95/Battle 제품 placeholder는 기본적으로 RAW-only codec과 Requ
 - 동일 조작을 3회 반복한 샘플
 - 펌웨어 버전 또는 Information 응답
 
-## 18. 가상 드론 1차 실기 검증 순서와 성공 조건
+## 18. 실제 조종기 수업 검증 순서와 성공 조건
 
-1. Chrome에서 조종기를 선택하고 Serial을 연결합니다.
-2. 필요하면 **입력 시작**으로 Controller Ping을 보냅니다.
-3. 왼쪽/오른쪽 stick과 버튼을 움직여 기본 화면의 USB 연결·스틱 입력·버튼 입력이 모두 `정상`, 조종기 상태가 `조종 준비 완료`가 되는지 확인합니다.
-4. **기본값 복원**을 눌러 일반 65%, 바이로봇 기본 조종, 헤드리스 끔, 자세 안정화 켬, Dead Zone 0.10, 감도 100%, Expo 0.45인지 확인합니다.
-5. 비행 상태가 `대기`인지 확인하고 **시동**을 누릅니다. `시동 완료`가 되고 프로펠러가 회전하지만 기체는 움직이지 않아야 합니다.
-6. **이륙**을 누릅니다. 스로틀을 계속 올리지 않아도 `이륙 중`을 거쳐 약 1.4m에서 `비행 가능`으로 바뀌어야 합니다.
-7. 왼쪽 스틱 상하로 상승/하강, 왼쪽 좌우로 Yaw, 오른쪽 상하로 전진/후진을 확인합니다. 이 세 축은 기존 확인 방향이 바뀌면 안 됩니다.
-8. 빨간 선을 기체 앞방향으로 보고 오른쪽 스틱을 오른쪽으로 움직이면 기체 기준 오른쪽, 왼쪽으로 움직이면 기체 기준 왼쪽으로 이동하는지 확인합니다.
-9. 중앙 근처의 작은 입력은 움직임을 만들지 않고, 약한 입력은 느리며, 끝까지 밀면 선택한 속도의 최대 출력에 도달하는지 확인합니다.
-10. 왼쪽 스틱을 위로 유지하면서 작은 좌우 흔들림에는 회전하지 않고, 명확한 좌우 대각선 입력에는 상승과 Yaw가 동시에 되는지 확인합니다.
-11. 초보 35% → 일반 65% → 고속 100%를 바꿔 같은 스틱 입력에서 네 축의 속도 차이를 확인합니다.
-12. 헤드리스를 끈 상태에서 Yaw 후 전진/좌우 이동이 기체 방향을 따르는지 확인합니다. 이어 헤드리스를 켜고 Yaw를 회전해도 Pitch/Roll 이동이 이륙을 시작할 때 저장한 기준 방향을 따르는지 확인합니다.
-13. 자세 안정화를 켜고 스틱을 놓았을 때 짧게 감속한 뒤 안정적으로 멈추고 수평으로 복귀하는지 확인합니다. 끈 상태에서는 감속과 기울기 복귀가 더 느려 관성이 조금 더 남는지 비교합니다.
-14. **착륙**을 눌러 `착륙 중` 뒤 지면에서 `착륙 완료`가 되고 프로펠러가 멈추는지 확인합니다.
-15. 다시 시동·이륙한 뒤 **긴급 안전 착륙**을 누릅니다. 수평 이동 명령을 무시하고 안전하게 하강해 `긴급 착륙 완료`가 되는지 확인한 후 **위치 초기화**를 누릅니다.
-16. 버튼을 직접 지정해야 할 때만 **사용자 설정**을 선택합니다. 시동/이륙/착륙/긴급의 **설정**을 각각 누른 뒤 실제 조종기 버튼을 지정하고, 눌림 edge에서 한 번만 실행되며 길게 눌러도 반복 실행되지 않는지 확인합니다.
-17. 연결을 해제하거나 500ms 이상 입력이 끊겼을 때 드론의 잔류 수평 속도와 Yaw rate가 즉시 중립화되는지 확인합니다.
-18. **개발자 정보 보기**를 펼쳐 기존 RAW, DataType, parsed packet, CRC, calibration 기능이 계속 동작하는지 확인합니다.
+### A. 연결과 자동 준비
 
-이번 단계의 정확한 성공 조건:
+1. Windows Chrome에서 조종기를 USB LINK 모드로 연결하고 **체험 시작**을 누릅니다.
+2. 해당 브라우저·배포 주소에서 처음이면 왼쪽의 **조종기 처음 연결하기**를 한 번 누르고 올바른 COM 포트를 승인합니다. 첫 권한 승인은 자동화할 수 없습니다.
+3. 포트가 열리면 Ping과 0x71/0x70 Request가 자동 시도되는지, USB 연결·스틱 입력·버튼 입력이 모두 `정상`이 되는지 확인합니다. 입력 증거를 만들기 위해 스틱과 버튼을 각각 한 번 조작합니다.
+4. 스틱을 모두 중앙에 놓고 약 0.9초 기다립니다. `스틱 중앙: 정상`과 `조종 준비 완료`가 되는지 확인하고, 틀리면 **스틱 중앙 다시 맞추기**를 사용합니다.
+5. 새로 고침 또는 다음 방문에서 기존 승인 포트가 자동으로 열리는지 확인합니다. 승인 포트가 여러 개인데 저장된 VID/PID와 일치하는 포트를 확정할 수 없으면 자동 선택하지 않는 것이 정상입니다.
 
-- 0x71 입력이 네 한글 stick 게이지와 `ControllerState`에 실시간 반영됨
-- 시동 → 자동 이륙 → 비행 → 착륙 → 정지 상태가 순서대로 동작함
-- 이륙 후 Throttle/Yaw/Pitch 방향은 유지되고 Roll만 교정되어 네 축이 의도한 방향으로 드론을 움직임
-- 중립 흔들림 `≤ 0.10`은 움직임을 만들지 않으며 Expo 뒤에도 스틱 끝은 최대 출력에 도달함
-- 큰 입력은 부드럽게 가속되고 stick을 놓으면 부드럽게 감속함
-- 작은 상승/Yaw 실수는 억제하고 명확한 대각선 입력은 동시에 반영함
-- 초보/일반/고속, 헤드리스, 자세 안정화의 차이를 실제 조종으로 확인할 수 있음
-- 긴급 기능이 추락시키는 즉시 모터 정지가 아니라 안전 착륙으로 동작함
-- 사용자 설정을 선택한 경우 0x70 버튼 매핑 네 기능이 실제 장치에서 각각 한 번씩 정확히 실행됨
-- 화면의 시동/이륙/착륙/초기화/긴급 안전 착륙이 동작함
-- 기존 RAW, DataType, parsed packet, CRC, calibration 화면이 **개발자 정보 보기** 안에서 계속 동작함
-- 현재 임시 드론 외형과 빨간 앞방향 표시가 유지되고 비행 로직과 분리되어 있음
+### B. Mode 2 시동과 실제 비행
 
-위 조건을 실제 장치에서 모두 확인한 뒤에만 다음 단계인 미래도시/장애물/미션 설계로 넘어갑니다. 다음 단계도 Serial packet이 아니라 `ControllerState`만 구독해야 합니다.
+1. **기본값 복원**으로 일반 65%, 바이로봇 기본 조종, 헤드리스 끔, 자세 안정화 켬, Dead Zone 0.10, 감도 100%, Expo 0.45를 확인합니다.
+2. **조종법 익히기 시작**을 누르고 양쪽 스틱을 아래 안쪽으로 모읍니다(왼쪽 5시, 오른쪽 7시). 임계값을 중간에 벗어나지 않고 3초 유지해 `ARMING`의 진행도가 차고 `ARMED(시동 완료)`가 되는지 확인합니다. 중간에 스틱을 놓으면 시간이 초기화되어야 합니다.
+3. ARMED 상태에서 왼쪽 스로틀을 천천히 올립니다. raw Throttle `0.22` 이상으로 실제 지면을 벗어날 때만 `FLIGHT(비행 가능)`로 바뀌어야 합니다. 이것이 학생 기본 이륙입니다.
+4. 별도로 화면 **위치 초기화 → 시동 → 이륙**을 차례로 눌러 `READY → ARMED → TAKEOFF → FLIGHT`와 고도 상승이 실제 화면에서도 동작하는지 확인합니다. 이 경로는 연결 점검과 수업 보조용입니다.
+4. 빨간 선을 기체의 앞으로 보고 네 축을 하나씩 확인합니다. 왼쪽 위/아래는 상승/하강, 왼쪽 오른쪽/왼쪽은 오른쪽/왼쪽 Yaw, 오른쪽 위/아래는 전진/후진, 오른쪽 오른쪽/왼쪽은 기체 기준 오른쪽/왼쪽 이동이어야 합니다. 구현에서는 Yaw와 Roll 입력 부호를 보정했고 Throttle과 Pitch 부호는 변경하지 않았습니다.
+5. 중앙 근처 `≤ 0.10`의 흔들림은 이동을 만들지 않고, 약한 입력은 Expo로 느리게, 끝까지 밀은 입력은 선택 속도의 최대 출력으로 작동하는지 확인합니다.
+6. 스로틀을 위로 올릴 때 작은 Yaw 흔들림은 억제되고, 명확하게 대각선으로 밀면 상승과 Yaw가 같이 반영되는지 확인합니다.
+7. 초보 35% → 일반 65% → 고속 100%에서 네 축 속도를 비교하고, 헤드리스 OFF/ON에서 기체 기준/이륙 당시 기준 방향의 차이를 확인합니다. 자세 안정화 ON은 스틱을 놓으면 짧게 감속한 뒤 수평으로 멈추고, OFF는 관성과 기울기가 더 오래 남아야 합니다.
+8. 착륙은 스로틀을 낮춰 직접 하강합니다. raw Throttle `-0.55` 이하, 고도 `0.12m` 이내에서 약 `0.65초` 유지하면 프로펠러가 멈추고 `READY`로 돌아가야 합니다.
+
+### C. 튜토리얼, 훈련, 자격시험, 미션
+
+1. 화면 안내에 따라 Mode 2 시동 → 실제 스로틀로 1m 이륙 → 오른쪽 Yaw 60° → 2.5m 전진 → 오른쪽 Roll 목표 진입 → 저스로틀 착륙의 6단계를 실제 조종으로 완료합니다.
+2. **기초 비행 훈련장**에서 번호 순서대로 gate 3개를 통과하고, 장애물/링 충돌 피드백과 마지막 정밀 착륙 판정을 확인합니다. 뒤 번 gate를 먼저 통과해도 진행도가 올라가면 안 됩니다.
+3. **조종 자격시험**에서 90초 안에 시동, 실제 이륙, 3-gate, Yaw 60° 이상, 고도 변화 0.8m 이상, 정상 착륙을 모두 수행합니다. gate 30점, 무충돌 20점, 안정성 20점, 착륙 20점, 시간 10점이며 필수 요건 전체와 총점 70점 이상을 모두 만족해야 합격입니다.
+4. 합격 후 **응급 의약품 운송**을 선택해 180초 안에 병원 A에서 출발하고, 강풍 구역의 표시/힘을 경험한 뒤 병원 B에 착륙합니다.
+5. **재난지역 탐색**에서는 먼저 **촬영 / 확인** 설정을 누르고 조종기의 실제 버튼을 학습시킵니다. 210초 안에 목표 3곳 가까이에서 그 버튼을 눌러 확인하고 출발 착륙장으로 복귀합니다. 제품별 button bit는 추측하지 않습니다.
+6. HUD의 고도, 속도, 남은 시간, 배터리, 현재 목표, 진행도와 충돌·강풍·목표 확인·저전력 피드백을 확인합니다. 배터리는 고속일수록 빠르게 소모되고 20% 이하에서 경고합니다. 현재 배터리 0% 자체는 미션을 즉시 종료시키는 조건으로 가정하지 않습니다.
+7. 시험 결과에서 항목별 점수와 합격/재도전을, 미션 결과에서 총점과 화면에 표시되는 안전·안정·착륙·목표 별점, 조종 강점 유형, 직업 메시지를 확인합니다.
+
+### D. 안전, 교사 기능, 개발자 회귀 확인
+
+1. **안전 기능 확인**의 **긴급정지 L 버튼** 설정에서 실제 L로 쓸 버튼을 한 번 학습시킵니다. 비행 중 raw Throttle `-0.75` 이하와 학습한 L 버튼을 같이 입력했을 때만 긴급 안전 착륙이 한 번 시작되어야 합니다. L 버튼만 누르거나 스로틀만 낮춰서는 긴급 명령이 발생하면 안 됩니다.
+2. 화면의 **긴급 안전 착륙**은 버튼 profile이 없어도 항상 사용할 수 있어야 합니다. 두 긴급 경로 모두 공중에서 모터를 즉시 끊어 추락시키지 않고, 수평 입력을 무시하고 감속 하강해야 합니다.
+3. 접힌 **교사용 테스트 기능**에서 훈련 초기화, 자격시험 바로 시작, 의료/재난 미션 바로 시작, 배터리 초기화, 드론 위치 초기화를 점검합니다. 이 기능은 수업 준비와 테스트용이지 학생 정상 진행 인정용이 아닙니다.
+4. 연결을 해제하거나 500ms 이상 입력이 끊겼을 때 드론의 수평 속도와 Yaw rate가 중립화되는지 확인합니다.
+5. **개발자 정보 보기**를 펼쳐 기존 RAW, DataType, parsed packet, CRC, calibration, 기본 조작 기록이 계속 작동하는지 확인합니다.
+
+실제 장치 승인 기준은 다음과 같습니다.
+
+- 자동 재연결과 자동 중앙 보정 후 0x71/0x70과 `ControllerState`가 정상
+- Mode 2 3초 시동 → ARMED → 실제 스로틀 이륙 → FLIGHT → 저스로틀 착륙 → READY가 순서대로 작동
+- Throttle/Pitch 방향은 기존과 같고 Yaw/Roll은 학생이 보는 오른쪽/왼쪽 조작과 일치
+- Dead Zone·Expo·smoothing·상승 중 Yaw 억제가 중립 조종을 쉽게 하면서 명확한 대각선과 최대 출력을 보존
+- 초보/일반/고속, 헤드리스, 자세 안정화의 차이를 실제 조종으로 구분 가능
+- 학습 L+저스로틀 긴급 조합과 화면 대체 기능이 모두 안전 착륙으로 작동
+- 6단계 조종법, 3-gate 훈련, 90초 자격시험, 의료품 운송, 재난 탐색, HUD, 배터리, 결과가 종단간 완주
+- 현재 임시 드론·코스 자산과 빨간 앞방향 표시가 유지되고 비행/수업 로직과 분리
+- 기존 Serial, RAW, parser, CRC, 0x71, 0x70, ControllerAdapter 기능이 회귀 없이 유지
+
+위 하드웨어 항목은 이 개발 환경에서 실제 조종기로 확인할 수 없었습니다. 현재 문서는 **구현된 테스트 절차**를 제공하며, 실제 성공 승인은 위 절차를 사용자의 BYROBOT 조종기와 Windows Chrome에서 완주한 뒤에만 가능합니다. 이후 고품질 드론/GLB·GLTF 모델과 미래도시 자산을 추가하더라도 Serial packet이 아닌 `ControllerState`과 분리된 비행/체험 경계만 사용해야 합니다.
 
 ## 19. 공식 참고 자료
 

@@ -52,9 +52,12 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(simpleUi, /조종기 상태/);
   assert.match(simpleUi, /왼쪽 스틱/);
   assert.match(simpleUi, /최근 눌린 버튼/);
-  assert.match(simulator, /가상 드론 테스트/);
+  assert.match(simulator, /미래항공모빌리티 운항 체험/);
+  assert.match(simulator, /Mode 2 시동/);
+  assert.match(simulator, /ExperienceCoordinator/);
+  assert.match(simulator, /aria-label="화면 비행 조작"/);
+  assert.match(simulator, /dispatchFlightAction\("arm"\)/);
   assert.match(simulator, /dispatchFlightAction\("takeoff"\)/);
-  assert.match(simulator, /dispatchFlightAction\("start"\)/);
   assert.match(simulator, /dispatchFlightAction\("land"\)/);
   assert.match(simulator, /dispatchFlightAction\("reset"\)/);
   assert.match(simulator, /dispatchFlightAction\("emergency"\)/);
@@ -106,6 +109,7 @@ test("contains the requested adapter and protocol module boundaries", async () =
     "../src/simulator/settings.ts",
     "../src/simulator/flight-controller.ts",
     "../src/simulator/flight-model.ts",
+    "../src/simulator/mode2-gesture-detector.ts",
     "../src/simulator/drone-transform.ts",
     "../src/simulator/button-mapping.ts",
     "../src/components/drone-visual.tsx",

@@ -2,7 +2,8 @@ export type MappableButtonAction =
   | "start"
   | "takeoff"
   | "land"
-  | "emergency";
+  | "emergency"
+  | "missionAction";
 
 export interface ControllerButtonBinding {
   /** Scopes mappings so another controller cannot trigger them accidentally. */
@@ -39,6 +40,7 @@ export interface ButtonCaptureUpdate {
 
 const ACTION_PRIORITY: readonly MappableButtonAction[] = [
   "emergency",
+  "missionAction",
   "land",
   "takeoff",
   "start",
@@ -69,6 +71,7 @@ function cloneMappings(
     takeoff: cloneBinding(mappings.takeoff),
     land: cloneBinding(mappings.land),
     emergency: cloneBinding(mappings.emergency),
+    missionAction: cloneBinding(mappings.missionAction),
   };
 }
 
@@ -84,7 +87,13 @@ function bindingsEqual(
 }
 
 export function createEmptyButtonMappings(): ControllerButtonMappings {
-  return { start: null, takeoff: null, land: null, emergency: null };
+  return {
+    start: null,
+    takeoff: null,
+    land: null,
+    emergency: null,
+    missionAction: null,
+  };
 }
 
 export function findRisingButtons(

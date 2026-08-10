@@ -38,11 +38,11 @@ test("uses the requested student defaults and exact speed scales", () => {
   });
 });
 
-test("inverts only roll in the initial custom axis mapping", () => {
+test("inverts hardware-tested yaw and roll in the initial custom axis mapping", () => {
   const defaults = settings.createDefaultSimulatorPreferences();
   assert.deepEqual(defaults.customAxisMapping, {
     throttle: { axisIndex: 1, inverted: false },
-    yaw: { axisIndex: 0, inverted: false },
+    yaw: { axisIndex: 0, inverted: true },
     pitch: { axisIndex: 3, inverted: false },
     roll: { axisIndex: 2, inverted: true },
   });
@@ -50,14 +50,14 @@ test("inverts only roll in the initial custom axis mapping", () => {
     settings.axisAssignmentsFromPreferences(defaults, 4),
     ["yaw", "throttle", "roll", "pitch"],
   );
-  assert.deepEqual(settings.invertedAxesFromPreferences(defaults), [2]);
+  assert.deepEqual(settings.invertedAxesFromPreferences(defaults), [0, 2]);
 });
 
 test("validates versioned stored preferences and rejects unsafe data", () => {
   const valid = settings.createDefaultSimulatorPreferences();
   assert.deepEqual(settings.parseSimulatorPreferences(valid), valid);
   assert.equal(
-    settings.parseSimulatorPreferences({ ...valid, version: 2 }),
+    settings.parseSimulatorPreferences({ ...valid, version: 3 }),
     null,
   );
   assert.equal(
@@ -74,6 +74,40 @@ test("validates versioned stored preferences and rejects unsafe data", () => {
     }),
     null,
     "duplicate axis assignments are rejected",
+  );
+});
+
+test("migrates only the exact legacy default to the hardware-tested yaw sign", () => {
+  const current = settings.createDefaultSimulatorPreferences();
+  const legacyDefault = {
+    ...current,
+    version: 1,
+    speedLevel: "beginner",
+    customAxisMapping: {
+      ...current.customAxisMapping,
+      yaw: { axisIndex: 0, inverted: false },
+    },
+  };
+  const migratedDefault = settings.migrateLegacySimulatorPreferences(
+    legacyDefault,
+  );
+  assert.equal(migratedDefault.version, 2);
+  assert.equal(migratedDefault.speedLevel, "beginner");
+  assert.equal(migratedDefault.customAxisMapping.yaw.inverted, true);
+
+  const intentionalCustom = {
+    ...legacyDefault,
+    customAxisMapping: {
+      throttle: { axisIndex: 3, inverted: true },
+      yaw: { axisIndex: 2, inverted: false },
+      pitch: { axisIndex: 1, inverted: false },
+      roll: { axisIndex: 0, inverted: false },
+    },
+  };
+  assert.deepEqual(
+    settings.migrateLegacySimulatorPreferences(intentionalCustom)
+      .customAxisMapping,
+    intentionalCustom.customAxisMapping,
   );
 });
 

@@ -75,7 +75,7 @@ test("provides distinct Smart, PRC-95, Battle Drone, and generic profiles", () =
   );
 });
 
-test("strict 0x71 preset keeps three signs and reverses roll only", () => {
+test("strict 0x71 preset applies hardware-tested yaw and roll corrections only", () => {
   const preset = profiles.BYROBOT_STRICT_JOYSTICK_AXIS_PRESET;
   assert.deepEqual(preset.rawAxisOrder, [
     "left-x",
@@ -90,7 +90,7 @@ test("strict 0x71 preset keeps three signs and reverses roll only", () => {
       inverted,
     })),
     [
-      { rawAxisIndex: 0, control: "yaw", inverted: false },
+      { rawAxisIndex: 0, control: "yaw", inverted: true },
       { rawAxisIndex: 1, control: "throttle", inverted: false },
       { rawAxisIndex: 2, control: "roll", inverted: true },
       { rawAxisIndex: 3, control: "pitch", inverted: false },
@@ -123,6 +123,7 @@ test("keeps every executable product operation default null", () => {
       takeoff: null,
       landing: null,
       emergency: null,
+      missionAction: null,
     });
     const resolved = profiles.resolveControllerProfile(profile, STRICT_CONTEXT);
     assert.deepEqual(resolved.operations, {
@@ -130,6 +131,7 @@ test("keeps every executable product operation default null", () => {
       takeoff: null,
       landing: null,
       emergency: null,
+      missionAction: null,
     });
   }
 });

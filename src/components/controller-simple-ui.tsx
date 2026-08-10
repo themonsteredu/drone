@@ -11,12 +11,19 @@ interface ControllerStatusPanelProps {
   mappingComplete: boolean;
   ready: boolean;
   busy: boolean;
+  automaticConnectionStatus:
+    | "checking"
+    | "needs-permission"
+    | "multiple-ports"
+    | "connecting"
+    | "connected"
+    | "error";
+  centerStatus: "idle" | "waiting-neutral" | "sampling" | "complete";
   error: string | null;
   notice: string;
   onSelectPort: () => void;
   onConnect: () => void;
-  onActivateInput: () => void;
-  onDisconnect: () => void;
+  onRecenter: () => void;
 }
 
 interface StickInputPanelProps {
@@ -88,12 +95,13 @@ export function ControllerStatusPanel({
   mappingComplete,
   ready,
   busy,
+  automaticConnectionStatus,
+  centerStatus,
   error,
   notice,
   onSelectPort,
   onConnect,
-  onActivateInput,
-  onDisconnect,
+  onRecenter,
 }: ControllerStatusPanelProps) {
   const currentStatus = ready
     ? "조종 준비 완료"
@@ -114,6 +122,17 @@ export function ControllerStatusPanel({
         <StatusRow label="USB 연결" ok={connected} waitingLabel="연결 안 됨" />
         <StatusRow label="스틱 입력" ok={stickInputOk} waitingLabel="입력 없음" />
         <StatusRow label="버튼 입력" ok={buttonInputOk} waitingLabel="입력 없음" />
+        <StatusRow
+          label="스틱 중앙"
+          ok={centerStatus === "complete"}
+          waitingLabel={
+            centerStatus === "sampling"
+              ? "맞추는 중"
+              : centerStatus === "waiting-neutral"
+                ? "스틱을 놓아 주세요"
+                : "대기"
+          }
+        />
       </ul>
 
       <div className={ready ? "simple-ready-state is-ready" : "simple-ready-state"} role="status" aria-live="polite">
@@ -122,36 +141,27 @@ export function ControllerStatusPanel({
       </div>
 
       <div className="simple-connection-actions">
-        <button
-          type="button"
-          onClick={onSelectPort}
-          disabled={!serialSupported || serialConnected || busy}
-        >
-          조종기 선택
-        </button>
-        <button
-          type="button"
-          className="is-primary"
-          onClick={onConnect}
-          disabled={!portSelected || serialConnected || busy}
-        >
-          연결하기
-        </button>
-        <button
-          type="button"
-          onClick={onActivateInput}
-          disabled={!serialConnected || busy || (stickInputOk && buttonInputOk)}
-        >
-          입력 시작
-        </button>
-        <button
-          type="button"
-          className="is-quiet"
-          onClick={onDisconnect}
-          disabled={!serialConnected || busy}
-        >
-          연결 해제
-        </button>
+        {!serialConnected ? (
+          <button
+            type="button"
+            className="is-primary"
+            onClick={portSelected ? onConnect : onSelectPort}
+            disabled={!serialSupported || busy || automaticConnectionStatus === "checking"}
+          >
+            {automaticConnectionStatus === "connecting"
+              ? "조종기 연결 중"
+              : "조종기 처음 연결하기"}
+          </button>
+        ) : null}
+        {serialConnected ? (
+          <button
+            type="button"
+            onClick={onRecenter}
+            disabled={busy || centerStatus === "sampling"}
+          >
+            스틱 중앙 다시 맞추기
+          </button>
+        ) : null}
       </div>
 
       {!supportChecked ? <p className="simple-help">브라우저 기능을 확인하고 있습니다.</p> : null}

@@ -2241,6 +2241,76 @@ h1 {
   min-height: 620px;
 }
 
+.simulator-card > header,
+.simulator-card > nav {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.simulator-card > header {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.simulator-card > header > dl {
+  flex-basis: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.simulator-card > nav > ol {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.simulator-card > nav li:nth-child(-n + 3) {
+  border-bottom: 1px solid #dce5f0;
+}
+
+.simulator-card > nav {
+  border-top: 0;
+}
+
+.experience-simulator-heading {
+  background: #f8fbff;
+}
+
+.tutorial-flight-guide {
+  align-items: center;
+  background: #eef8f3;
+  border-bottom: 1px solid #cfe6da;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.75fr);
+  padding: 14px 18px;
+}
+
+.tutorial-flight-guide > div > span {
+  color: #18704a;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+}
+
+.tutorial-flight-guide h3,
+.tutorial-flight-guide p {
+  margin: 0;
+}
+
+.tutorial-flight-guide h3 {
+  color: #18392b;
+  font-size: 18px;
+  margin-top: 2px;
+}
+
+.tutorial-flight-guide p {
+  color: #49685a;
+  font-size: 13px;
+  line-height: 1.55;
+  margin-top: 4px;
+}
+
 .simulator-heading {
   border-bottom: 1px solid #e4ebf3;
   min-height: 70px;
@@ -2430,6 +2500,32 @@ h1 {
   margin-left: 3px;
 }
 
+.flight-feedback-overlay {
+  max-width: min(390px, calc(100% - 28px));
+  pointer-events: none;
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 100%;
+  z-index: 14;
+}
+
+.flight-emergency-overlay {
+  background: rgba(255, 240, 239, 0.96) !important;
+  border-color: #e7958f !important;
+  bottom: 14px;
+  color: #a92520 !important;
+  font-weight: 900;
+  min-width: 160px;
+  position: absolute;
+  right: 14px;
+  z-index: 10;
+}
+
+.flight-emergency-overlay:disabled {
+  opacity: 0.58;
+}
+
 .flight-action-bar {
   border-top: 1px solid #e4ebf3;
   display: grid;
@@ -2449,6 +2545,42 @@ h1 {
   border-color: #edaaa5;
   color: #b1322b;
   font-weight: 800;
+}
+
+.student-flight-actions {
+  background: #fff;
+}
+
+.screen-control-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.screen-control-note strong,
+.screen-control-note span {
+  display: block;
+}
+
+.screen-control-note strong {
+  color: #24354b;
+  font-size: 13px;
+}
+
+.screen-control-note span {
+  color: #718095;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.mapping-safety-note {
+  background: #fff8e9;
+  border: 1px solid #f0d8a8;
+  border-radius: 10px;
+  color: #78531d;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+  padding: 10px 12px;
 }
 
 .flight-settings-panel {
@@ -2995,6 +3127,11 @@ h1 {
   .flight-action-bar {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .tutorial-flight-guide {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 @media (max-width: 560px) {
@@ -3037,6 +3174,14 @@ h1 {
     grid-template-columns: 1fr 1fr;
   }
 
+  .simulator-card > header > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .screen-control-note {
+    text-align: center;
+  }
+
   .flight-action-bar .is-emergency {
     grid-column: 1 / -1;
     min-height: 50px;
@@ -3062,6 +3207,21 @@ h1 {
   .flight-telemetry {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .flight-feedback-overlay {
+    left: 10px;
+    max-width: none;
+    right: 10px;
+    top: 10px;
+    width: auto;
+  }
+
+  .flight-emergency-overlay {
+    bottom: 76px;
+    left: 10px;
+    right: 10px;
+    width: calc(100% - 20px);
   }
 
   .mapping-row {

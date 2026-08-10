@@ -26,6 +26,7 @@ const OPERATIONS: readonly ControllerOperation[] = [
   "takeoff",
   "landing",
   "emergency",
+  "missionAction",
 ];
 
 /**
@@ -39,12 +40,14 @@ export const UNVERIFIED_DEFAULT_OPERATIONS: DefaultControllerOperationGestures =
     takeoff: null,
     landing: null,
     emergency: null,
+    missionAction: null,
   });
 
 /**
  * Verified 0x71 raw order: LX, LY, RX, RY. The semantic assignment retains the
- * already-tested throttle/yaw/pitch signs and flips only right-X -> roll so a
- * right stick command moves toward the aircraft's red right-hand side.
+ * tested throttle/pitch signs, flips right-X -> roll so a right stick command
+ * moves toward the aircraft's right-hand side, and applies the later hardware
+ * correction for left-X -> yaw so stick-right means clockwise/right yaw.
  */
 export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
   Object.freeze({
@@ -61,7 +64,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 0,
         physicalAxis: "left-x",
         control: "yaw",
-        inverted: false,
+        inverted: true,
       }),
       Object.freeze({
         rawAxisIndex: 1,
@@ -92,7 +95,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
       status: "verified",
       scope: "protocol-and-hardware",
       summary:
-        "The official joystick structure supplies left/right X/Y in an 8-byte payload; the semantic signs include the locally verified roll-only correction.",
+        "The official joystick structure supplies left/right X/Y in an 8-byte payload; the semantic signs include locally hardware-tested yaw and roll corrections while throttle and pitch retain their established signs.",
       sourceUrls: Object.freeze([OFFICIAL_BYROBOT_JOYSTICK_STRUCT_URL]),
     }),
   });
@@ -121,7 +124,7 @@ function createProfile(
 
 export const SMART_CONTROLLER_PROFILE = createProfile(
   "byrobot-smart-controller",
-  "BYROBOT Smart Controller",
+  "바이로봇 스마트 조종기",
   ["byrobot-smart-controller"],
   "unverified",
   "The current product adapter is hint-matched; its USB/product identity and executable operation button values are not verified.",
@@ -137,7 +140,7 @@ export const PRC95_PROFILE = createProfile(
 
 export const BATTLE_DRONE_PROFILE = createProfile(
   "byrobot-battle-drone",
-  "BYROBOT Battle Drone Controller",
+  "바이로봇 배틀드론 조종기",
   ["byrobot-battle-drone"],
   "candidate",
   "The adapter can identify an official model number, but the manual's physical button number has not been linked to a USB 0x70 button bit.",
@@ -174,7 +177,7 @@ export const BATTLE_DRONE_PROFILE = createProfile(
 
 export const GENERIC_BYROBOT_PROFILE = createProfile(
   "byrobot-generic",
-  "Unknown BYROBOT Controller",
+  "바이로봇 조종기(모델 미확인)",
   ["byrobot-serial-generic-coding-e-candidate"],
   "unverified",
   "A valid strict input codec can enable axes, but it must not establish a product model or default operation buttons.",

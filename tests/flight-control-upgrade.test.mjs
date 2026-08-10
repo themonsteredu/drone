@@ -223,7 +223,7 @@ test("stabilization settles position velocity and visual tilt faster", () => {
   assert.ok(tiltMagnitude(stabilized) < tiltMagnitude(direct) * 0.2);
 });
 
-test("explicit start, takeoff, flight, landing and stop phases are deterministic", () => {
+test("explicit legacy start/takeoff remains deterministic and normal landing returns ready", () => {
   const ready = createInitialFlightState();
   assert.equal(ready.phase, FLIGHT_PHASE.READY);
 
@@ -248,7 +248,7 @@ test("explicit start, takeoff, flight, landing and stop phases are deterministic
   const landing = applyFlightCommand(airborne, "land");
   assert.equal(landing.phase, FLIGHT_PHASE.LANDING);
   const stopped = advance(landing, NEUTRAL, 6);
-  assert.equal(stopped.phase, FLIGHT_PHASE.STOP);
+  assert.equal(stopped.phase, FLIGHT_PHASE.READY);
   assert.equal(stopped.position.y, 0);
   assert.deepEqual(stopped.velocity, { x: 0, y: 0, z: 0 });
   const rotorsStopped = advance(stopped, NEUTRAL, 2);

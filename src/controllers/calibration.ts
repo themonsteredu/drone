@@ -47,6 +47,7 @@ export function createFixedAxisProfile(
   options: {
     deadZone?: number;
     invertedAxes?: readonly number[];
+    centers?: readonly number[];
   } = {},
 ): AxisCalibration[] {
   const deadZone = Math.max(0, Math.min(0.95, options.deadZone ?? 0.1));
@@ -58,7 +59,7 @@ export function createFixedAxisProfile(
       rawCurrent,
       observedMinimum: -1,
       observedMaximum: 1,
-      center: 0,
+      center: Math.max(-0.95, Math.min(0.95, options.centers?.[index] ?? 0)),
       normalizedValue: null,
       inverted: inverted.has(index),
       deadZone,

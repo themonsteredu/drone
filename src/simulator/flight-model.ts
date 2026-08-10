@@ -12,6 +12,10 @@
 
 export const FLIGHT_PHASE = {
   READY: "READY",
+  ARMING: "ARMING",
+  ARMED: "ARMED",
+  // Legacy screen-command phases are retained for teacher tools and existing
+  // saved classroom flows. Student Mode 2 uses READY -> ARMING -> ARMED.
   START: "START",
   TAKEOFF: "TAKEOFF",
   FLIGHT: "FLIGHT",
@@ -34,6 +38,9 @@ export type FlightMode =
   | "emergency";
 
 export type FlightCommand =
+  | "begin-arming"
+  | "cancel-arming"
+  | "arm"
   | "start"
   | "takeoff"
   | "land"
@@ -94,6 +101,8 @@ export interface FlightState {
   rotorSpeed: number;
   /** Requires reset after an emergency has completed. */
   emergencyLatched: boolean;
+  /** Low-throttle time accumulated only while touching the landing area. */
+  groundLowThrottleSeconds: number;
 }
 
 export interface FlightModelConfig {
@@ -129,6 +138,13 @@ export interface FlightModelConfig {
   maxVerticalSpeed: number;
   maxYawRate: number;
   maxTilt: number;
+  /** Raw semantic throttle required to leave the ground after arming. */
+  takeoffThrottleThreshold: number;
+  /** Raw semantic throttle considered an intentional landing command. */
+  landingThrottleThreshold: number;
+  /** Height at which a held low throttle may disarm after touchdown. */
+  landingDetectionHeight: number;
+  landingDisarmHoldSeconds: number;
   takeoffHeight: number;
   takeoffSpeed: number;
   landingSpeed: number;
@@ -171,6 +187,10 @@ export const DEFAULT_FLIGHT_CONFIG: Readonly<FlightModelConfig> = {
   maxVerticalSpeed: 2,
   maxYawRate: Math.PI,
   maxTilt: Math.PI / 10,
+  takeoffThrottleThreshold: 0.22,
+  landingThrottleThreshold: -0.55,
+  landingDetectionHeight: 0.12,
+  landingDisarmHoldSeconds: 0.65,
   takeoffHeight: 1.4,
   takeoffSpeed: 1.1,
   landingSpeed: 0.72,
@@ -272,6 +292,20 @@ export function resolveFlightModelConfig(
     maxVerticalSpeed: positiveRate(merged.maxVerticalSpeed),
     maxYawRate: positiveRate(merged.maxYawRate),
     maxTilt: positiveRate(merged.maxTilt),
+    takeoffThrottleThreshold: clamp(
+      finiteOrZero(merged.takeoffThrottleThreshold),
+      0.05,
+      0.95,
+    ),
+    landingThrottleThreshold: clamp(
+      finiteOrZero(merged.landingThrottleThreshold),
+      -1,
+      -0.05,
+    ),
+    landingDetectionHeight: positiveRate(merged.landingDetectionHeight),
+    landingDisarmHoldSeconds: positiveRate(
+      merged.landingDisarmHoldSeconds,
+    ),
     takeoffHeight: positiveRate(merged.takeoffHeight),
     takeoffSpeed: positiveRate(merged.takeoffSpeed),
     landingSpeed: positiveRate(merged.landingSpeed),
@@ -427,6 +461,7 @@ export function createInitialFlightState(): FlightState {
     takeoffYaw: 0,
     rotorSpeed: 0,
     emergencyLatched: false,
+    groundLowThrottleSeconds: 0,
   };
 }
 
@@ -461,6 +496,10 @@ function normalizeFlightState(state: FlightState): FlightState {
       : finiteOrZero(state.yaw),
     rotorSpeed: clamp(finiteOrZero(state.rotorSpeed), 0, 1),
     emergencyLatched,
+    groundLowThrottleSeconds: Math.max(
+      0,
+      finiteOrZero(state.groundLowThrottleSeconds),
+    ),
   };
 }
 
@@ -487,6 +526,82 @@ export function neutralizeFlightMotion(state: FlightState): FlightState {
     yawRate: 0,
     tilt: { pitch: 0, roll: 0 },
     smoothedInput: { ...ZERO_AXES },
+  };
+}
+
+/**
+ * Applies a mission-neutral world-space acceleration (for example a gentle
+ * wind zone) without giving MissionSystem access to mutable flight state.
+ * It affects airborne manual flight only and is bounded for classroom safety.
+ */
+export function applyFlightWorldForce(
+  state: FlightState,
+  force: Readonly<FlightVector3>,
+  elapsedSeconds: number,
+  settings: Partial<FlightModelConfig> = {},
+): FlightState {
+  const current = cloneFlightState(state);
+  if (current.phase !== FLIGHT_PHASE.FLIGHT) return current;
+
+  const config = resolveFlightModelConfig(settings);
+  const dt = clamp(finiteOrZero(elapsedSeconds), 0, config.maxElapsedSeconds);
+  if (dt === 0) return current;
+
+  // Mission definitions express this value as m/s². A bad definition cannot
+  // accelerate a classroom drone without bound.
+  const maximumAcceleration = 3;
+  const acceleration = {
+    x: clamp(finiteOrZero(force.x), -maximumAcceleration, maximumAcceleration),
+    y: clamp(finiteOrZero(force.y), -maximumAcceleration, maximumAcceleration),
+    z: clamp(finiteOrZero(force.z), -maximumAcceleration, maximumAcceleration),
+  };
+  let velocityX = current.velocity.x + acceleration.x * dt;
+  let velocityZ = current.velocity.z + acceleration.z * dt;
+  const planarSpeed = Math.hypot(velocityX, velocityZ);
+  const maximumPlanarSpeed = config.maxHorizontalSpeed * 1.35;
+  if (maximumPlanarSpeed <= 0) {
+    velocityX = 0;
+    velocityZ = 0;
+  } else if (planarSpeed > maximumPlanarSpeed) {
+    const scale = maximumPlanarSpeed / planarSpeed;
+    velocityX *= scale;
+    velocityZ *= scale;
+  }
+
+  return {
+    ...current,
+    velocity: {
+      x: velocityX,
+      y: clamp(
+        current.velocity.y + acceleration.y * dt,
+        -config.maxVerticalSpeed * 1.25,
+        config.maxVerticalSpeed * 1.25,
+      ),
+      z: velocityZ,
+    },
+  };
+}
+
+/**
+ * Classroom-safe collision response: remove most horizontal momentum and let
+ * the existing stabilization loop level the aircraft. Mission scoring remains
+ * outside FlightPhysics and receives only the collision event.
+ */
+export function applyFlightCollisionResponse(
+  state: FlightState,
+  retainedVelocity = 0.22,
+): FlightState {
+  const current = cloneFlightState(state);
+  if (current.phase !== FLIGHT_PHASE.FLIGHT) return current;
+  const retention = clamp(finiteOrZero(retainedVelocity), 0, 1);
+  return {
+    ...current,
+    velocity: {
+      x: current.velocity.x * retention,
+      y: current.velocity.y * Math.max(retention, 0.5),
+      z: current.velocity.z * retention,
+    },
+    yawRate: current.yawRate * 0.5,
   };
 }
 
@@ -519,6 +634,28 @@ export function applyFlightCommand(
   if (current.emergencyLatched) return current;
 
   if (
+    command === "begin-arming" &&
+    current.phase === FLIGHT_PHASE.READY
+  ) {
+    return withPhase(current, FLIGHT_PHASE.ARMING);
+  }
+
+  if (
+    command === "cancel-arming" &&
+    current.phase === FLIGHT_PHASE.ARMING
+  ) {
+    return withPhase(current, FLIGHT_PHASE.READY);
+  }
+
+  if (
+    command === "arm" &&
+    (current.phase === FLIGHT_PHASE.READY ||
+      current.phase === FLIGHT_PHASE.ARMING)
+  ) {
+    return withPhase(current, FLIGHT_PHASE.ARMED);
+  }
+
+  if (
     command === "start" &&
     (current.phase === FLIGHT_PHASE.READY ||
       current.phase === FLIGHT_PHASE.STOP)
@@ -528,7 +665,8 @@ export function applyFlightCommand(
 
   if (
     command === "takeoff" &&
-    current.phase === FLIGHT_PHASE.START
+    (current.phase === FLIGHT_PHASE.ARMED ||
+      current.phase === FLIGHT_PHASE.START)
   ) {
     const takeoff = withPhase(current, FLIGHT_PHASE.TAKEOFF);
     takeoff.takeoffYaw = current.yaw;
@@ -595,7 +733,7 @@ function snapSettledVelocity(
 }
 
 function targetRotorSpeed(phase: FlightPhase): number {
-  if (phase === FLIGHT_PHASE.START) return 0.62;
+  if (phase === FLIGHT_PHASE.ARMED || phase === FLIGHT_PHASE.START) return 0.62;
   if (phase === FLIGHT_PHASE.TAKEOFF || phase === FLIGHT_PHASE.FLIGHT) return 1;
   if (phase === FLIGHT_PHASE.LANDING) return 0.76;
   if (phase === FLIGHT_PHASE.EMERGENCY) return 0.8;
@@ -615,13 +753,21 @@ function descentSpeedForHeight(
 function stepFlightSubstate(
   state: FlightState,
   targetInput: FlightAxes,
+  manualTakeoffRequested: boolean,
+  landingThrottleLow: boolean,
   dt: number,
   config: FlightModelConfig,
 ): FlightState {
   const current = cloneFlightState(state);
   const next = cloneFlightState(current);
   const acceptsManualControl = current.phase === FLIGHT_PHASE.FLIGHT;
-  const desiredInput = acceptsManualControl ? targetInput : ZERO_AXES;
+  const acceptsArmedThrottle =
+    current.phase === FLIGHT_PHASE.ARMED && manualTakeoffRequested;
+  const desiredInput = acceptsManualControl
+    ? targetInput
+    : acceptsArmedThrottle
+      ? { ...ZERO_AXES, throttle: Math.max(0, targetInput.throttle) }
+      : ZERO_AXES;
   next.smoothedInput = smoothAxes(
     current.smoothedInput,
     desiredInput,
@@ -644,7 +790,7 @@ function stepFlightSubstate(
       config.emergencyDescentSpeed,
       config.landingSlowdownHeight,
     );
-  } else if (acceptsManualControl) {
+  } else if (acceptsManualControl || acceptsArmedThrottle) {
     targetVerticalSpeed =
       next.smoothedInput.throttle * config.maxVerticalSpeed;
   }
@@ -799,6 +945,25 @@ function stepFlightSubstate(
     1,
   );
 
+  const nearLandingSurface =
+    next.position.y <= config.landingDetectionHeight;
+  next.groundLowThrottleSeconds =
+    current.phase === FLIGHT_PHASE.FLIGHT &&
+    landingThrottleLow &&
+    nearLandingSurface
+      ? current.groundLowThrottleSeconds + dt
+      : 0;
+
+  if (
+    current.phase === FLIGHT_PHASE.ARMED &&
+    manualTakeoffRequested &&
+    next.position.y > config.groundSnapHeight
+  ) {
+    next.takeoffYaw = current.yaw;
+    next.groundLowThrottleSeconds = 0;
+    return withPhase(next, FLIGHT_PHASE.FLIGHT);
+  }
+
   if (
     current.phase === FLIGHT_PHASE.TAKEOFF &&
     next.position.y >= config.takeoffHeight
@@ -819,11 +984,23 @@ function stepFlightSubstate(
 
   if (touchesGround) {
     next.position.y = 0;
+    next.velocity.y = 0;
+    if (current.phase === FLIGHT_PHASE.LANDING) {
+      next.groundLowThrottleSeconds = 0;
+      return stoppedState(next, FLIGHT_PHASE.READY);
+    }
+    if (current.phase === FLIGHT_PHASE.EMERGENCY) {
+      return stoppedState(next, FLIGHT_PHASE.STOP);
+    }
     if (
-      descending ||
-      current.phase === FLIGHT_PHASE.FLIGHT ||
-      current.phase === FLIGHT_PHASE.STOP
+      current.phase === FLIGHT_PHASE.FLIGHT &&
+      landingThrottleLow &&
+      next.groundLowThrottleSeconds >= config.landingDisarmHoldSeconds
     ) {
+      next.groundLowThrottleSeconds = 0;
+      return stoppedState(next, FLIGHT_PHASE.READY);
+    }
+    if (current.phase === FLIGHT_PHASE.STOP) {
       return stoppedState(next, FLIGHT_PHASE.STOP);
     }
   }
@@ -853,11 +1030,27 @@ export function stepFlightState(
   if (elapsed === 0) return next;
 
   const targetInput = conditionFlightControls(input, config);
+  // Thresholds intentionally use raw normalized ControllerState semantics, so
+  // takeoff/landing behavior is independent of speed level, expo, and user
+  // sensitivity. The shaped value still controls the actual vertical speed.
+  const inputActive = input.active !== false;
+  const rawThrottle = clampUnit(input.throttle);
+  const manualTakeoffRequested =
+    inputActive && rawThrottle >= config.takeoffThrottleThreshold;
+  const landingThrottleLow =
+    inputActive && rawThrottle <= config.landingThrottleThreshold;
   const maximumSubstep = Math.max(1 / 1000, config.maxSubstepSeconds);
   const substepCount = Math.max(1, Math.ceil(elapsed / maximumSubstep));
   const substep = elapsed / substepCount;
   for (let index = 0; index < substepCount; index += 1) {
-    next = stepFlightSubstate(next, targetInput, substep, config);
+    next = stepFlightSubstate(
+      next,
+      targetInput,
+      manualTakeoffRequested,
+      landingThrottleLow,
+      substep,
+      config,
+    );
   }
   return next;
 }

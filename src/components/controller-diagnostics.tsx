@@ -18,6 +18,13 @@ import {
   type SemanticControl,
 } from "../controllers/calibration";
 import {
+  createCenterCalibrationState,
+  isNewCenterCalibrationSample,
+  observeCenterCalibration,
+  restartCenterCalibration,
+  type CenterCalibrationState,
+} from "../controllers/center-calibration";
+import {
   GenericByrobotSerialAdapter,
   type ByrobotSerialSnapshot,
   type RawSerialEntry,
@@ -27,6 +34,13 @@ import {
   type GamepadRawSnapshot,
 } from "../controllers/adapters/gamepad-adapter";
 import { ControllerManager } from "../controllers/controller-manager";
+import {
+  LEGACY_SERIAL_IDENTITY_STORAGE_KEY,
+  SERIAL_IDENTITY_STORAGE_KEY,
+  chooseAuthorizedSerialPort,
+  identityFromPort,
+  parseRememberedSerialIdentity,
+} from "../controllers/connections/serial-auto-connect";
 import {
   resolveControllerProfile,
   selectControllerProfile,
@@ -52,6 +66,8 @@ import { ByrobotOperationCapture } from "./byrobot-operation-capture";
 import { DroneSimulator } from "./drone-simulator";
 import { useSimulatorPreferences } from "./use-simulator-preferences";
 
+const EMPTY_AUTOMATIC_CENTERS: readonly number[] = Object.freeze([]);
+
 type ApiSupport = {
   checked: boolean;
   gamepad: boolean;
@@ -65,6 +81,14 @@ type ApiSupport = {
 type PortSelection = BrowserSerialPortInfo & {
   selectedAt: number;
 };
+
+type AutomaticConnectionStatus =
+  | "checking"
+  | "needs-permission"
+  | "multiple-ports"
+  | "connecting"
+  | "connected"
+  | "error";
 
 type GamepadView = GamepadRawSnapshot & {
   diagnostics: ControllerDiagnostics;
@@ -338,6 +362,11 @@ export function ControllerDiagnosticsPage() {
     createUnidentifiedState(false),
   );
   const [serialBusy, setSerialBusy] = useState(false);
+  const serialBusyRef = useRef(false);
+  const [automaticConnectionStatus, setAutomaticConnectionStatus] =
+    useState<AutomaticConnectionStatus>("checking");
+  const autoConnectAttemptedRef = useRef(false);
+  const rememberedPortSavedRef = useRef(false);
   const [uiError, setUiError] = useState<string | null>(null);
   const [notice, setNotice] = useState(
     "Gamepad를 연결하거나 Serial 장치를 선택해 진단을 시작하세요.",
@@ -351,6 +380,12 @@ export function ControllerDiagnosticsPage() {
   const recordRangeRef = useRef(false);
   const calibrationOwnerKeyRef = useRef<string | null>(null);
   const hasSerialSelectionRef = useRef(false);
+  const centerCalibrationRef = useRef<CenterCalibrationState>(
+    createCenterCalibrationState(),
+  );
+  const lastCenterJoystickAtRef = useRef<number | null>(null);
+  const [centerCalibration, setCenterCalibration] =
+    useState<CenterCalibrationState>(() => createCenterCalibrationState());
 
   useEffect(() => {
     selectedGamepadIndexRef.current = selectedGamepadIndex;
@@ -541,6 +576,24 @@ export function ControllerDiagnosticsPage() {
     });
     const state = adapter.getState();
     setSerialState({ ...state });
+    if (
+      snapshot.packetCount > 0 &&
+      snapshot.startCodeSeen &&
+      portRef.current &&
+      !rememberedPortSavedRef.current
+    ) {
+      try {
+        window.localStorage.setItem(
+          SERIAL_IDENTITY_STORAGE_KEY,
+          JSON.stringify(
+            identityFromPort(portRef.current, snapshot.baudRate),
+          ),
+        );
+        rememberedPortSavedRef.current = true;
+      } catch {
+        // Automatic reconnect remains optional when storage is unavailable.
+      }
+    }
     if (hasSerialSelectionRef.current && state.rawAxes?.length) {
       const sourceKey = `serial:${adapter.id}:${snapshot.openedAt ?? "opening"}`;
       const sourceChanged = calibrationOwnerKeyRef.current !== sourceKey;
@@ -551,6 +604,27 @@ export function ControllerDiagnosticsPage() {
         recordRangeRef.current = false;
         setCalibrationStarted(false);
         setRecordRange(false);
+        centerCalibrationRef.current = restartCenterCalibration(
+          state.rawAxes.length,
+        );
+        lastCenterJoystickAtRef.current = null;
+        setCenterCalibration(centerCalibrationRef.current);
+      }
+      const acceptedJoystickAt = snapshot.controllerInput.latestAcceptedJoystickAt;
+      if (
+        isNewCenterCalibrationSample(
+          lastCenterJoystickAtRef.current,
+          acceptedJoystickAt,
+        )
+      ) {
+        const nextCenter = observeCenterCalibration(
+          centerCalibrationRef.current,
+          state.rawAxes,
+          acceptedJoystickAt,
+        );
+        lastCenterJoystickAtRef.current = acceptedJoystickAt;
+        centerCalibrationRef.current = nextCenter;
+        setCenterCalibration(nextCenter);
       }
       setCalibrations((current) =>
         observeRawAxes(
@@ -577,15 +651,8 @@ export function ControllerDiagnosticsPage() {
     };
   }, []);
 
-  const selectSerialPort = async () => {
-    setUiError(null);
-    if (!navigator.serial) {
-      setUiError("Web Serial 미지원: Windows의 최신 Google Chrome에서 HTTPS 주소로 여세요.");
-      return;
-    }
-
-    try {
-      const port = await navigator.serial.requestPort();
+  const prepareSerialPort = useCallback(
+    async (port: BrowserSerialPort) => {
       const previousAdapter = serialAdapterRef.current;
       if (previousAdapter) {
         serialUnsubscribeRef.current?.();
@@ -596,25 +663,103 @@ export function ControllerDiagnosticsPage() {
       serialUnsubscribeRef.current = null;
       portRef.current = port;
       hasSerialSelectionRef.current = false;
+      rememberedPortSavedRef.current = false;
       setSerialSnapshot(null);
       setSerialHealthWarnings([]);
       setSerialState(createUnidentifiedState(false));
       calibrationStartedRef.current = false;
       recordRangeRef.current = false;
       calibrationOwnerKeyRef.current = null;
+      centerCalibrationRef.current = createCenterCalibrationState();
+      lastCenterJoystickAtRef.current = null;
       setCalibrationStarted(false);
       setRecordRange(false);
       setCalibrationOwnerKey(null);
       setCalibrations([]);
+      setCenterCalibration(centerCalibrationRef.current);
       setPortSelection({ ...port.getInfo(), selectedAt: Date.now() });
       setSerialDiagnostics({
         ...createWaitingDiagnostics("serial"),
-        deviceDetected: { status: "pass", detail: "Serial 포트 선택됨" },
+        deviceDetected: { status: "pass", detail: "승인된 Serial 포트 발견" },
       });
-      setNotice("Serial 장치를 선택했습니다. baud rate를 확인한 뒤 연결하세요.");
+    },
+    [manager],
+  );
+
+  const openSerialPort = useCallback(
+    async (
+      port: BrowserSerialPort,
+      automatic: boolean,
+      selectedBaudRate = baudRate,
+    ) => {
+      if (serialBusyRef.current || serialAdapterRef.current?.getSnapshot().isOpen) {
+        return;
+      }
+      serialBusyRef.current = true;
+      setSerialBusy(true);
+      setUiError(null);
+      setAutomaticConnectionStatus("connecting");
+      setNotice("조종기를 확인하고 있습니다.");
+
+      try {
+        await prepareSerialPort(port);
+        setBaudRate(selectedBaudRate);
+        const adapter = new GenericByrobotSerialAdapter(
+          port,
+          selectedBaudRate,
+        );
+        serialAdapterRef.current = adapter;
+        manager.register(adapter);
+        manager.setActive(adapter.id);
+        let lastUiSync = 0;
+        serialUnsubscribeRef.current = adapter.subscribe(() => {
+          const now = performance.now();
+          if (now - lastUiSync >= 100) {
+            lastUiSync = now;
+            syncSerial();
+          }
+        });
+
+        await adapter.connect();
+        hasSerialSelectionRef.current = true;
+        setAutomaticConnectionStatus("connected");
+        setNotice(
+          automatic
+            ? "승인된 조종기에 자동 연결했습니다. 스틱을 중앙에 놓아 주세요."
+            : "조종기를 연결했습니다. 다음 접속부터는 자동으로 연결됩니다.",
+        );
+
+        // Existing BYROBOT acquisition methods are retained; automatic use
+        // removes extra student-facing clicks without changing packet parsing.
+        await adapter.sendInputActivationPing().catch(() => undefined);
+        await adapter.requestControllerInputOnce().catch(() => undefined);
+      } catch (error) {
+        hasSerialSelectionRef.current = false;
+        setAutomaticConnectionStatus("error");
+        setUiError(errorMessage(error));
+      } finally {
+        syncSerial();
+        serialBusyRef.current = false;
+        setSerialBusy(false);
+      }
+    },
+    [baudRate, manager, prepareSerialPort, syncSerial],
+  );
+
+  const selectSerialPort = async () => {
+    setUiError(null);
+    if (!navigator.serial) {
+      setUiError("Web Serial 미지원: Windows의 최신 Google Chrome에서 HTTPS 주소로 여세요.");
+      return;
+    }
+
+    try {
+      const port = await navigator.serial.requestPort();
+      await openSerialPort(port, false);
     } catch (error) {
+      setAutomaticConnectionStatus("needs-permission");
       if (error instanceof DOMException && error.name === "NotFoundError") {
-        setUiError("포트 선택이 취소되었거나 권한이 허용되지 않았습니다.");
+        setUiError("조종기 선택을 취소했습니다. 준비되면 다시 연결해 주세요.");
       } else if (error instanceof DOMException && error.name === "NotAllowedError") {
         setUiError("시리얼 포트 권한이 거절되었습니다.");
       } else {
@@ -625,43 +770,87 @@ export function ControllerDiagnosticsPage() {
 
   const connectSerial = async () => {
     if (!portRef.current) {
-      setUiError("먼저 ‘Serial 장치 선택’을 누르세요.");
+      setUiError("먼저 ‘조종기 처음 연결하기’를 눌러 주세요.");
       return;
     }
-    setUiError(null);
-    setSerialBusy(true);
+    await openSerialPort(portRef.current, false);
+  };
 
-    const oldAdapter = serialAdapterRef.current;
-    if (oldAdapter) {
-      serialUnsubscribeRef.current?.();
-      manager.unregister(oldAdapter.id);
-    }
+  useEffect(() => {
+    if (!support.checked || !support.serial || !navigator.serial) return;
+    let active = true;
 
-    const adapter = new GenericByrobotSerialAdapter(portRef.current, baudRate);
-    serialAdapterRef.current = adapter;
-    manager.register(adapter);
-    manager.setActive(adapter.id);
-    let lastUiSync = 0;
-    serialUnsubscribeRef.current = adapter.subscribe(() => {
-      const now = performance.now();
-      if (now - lastUiSync >= 100) {
-        lastUiSync = now;
-        syncSerial();
+    const attemptAutomaticConnection = async () => {
+      if (
+        autoConnectAttemptedRef.current ||
+        serialBusyRef.current ||
+        serialAdapterRef.current?.getSnapshot().isOpen
+      ) {
+        return;
       }
-    });
+      autoConnectAttemptedRef.current = true;
+      setAutomaticConnectionStatus("checking");
+      try {
+        const ports = await navigator.serial?.getPorts() ?? [];
+        if (!active) return;
+        let remembered = null;
+        try {
+          remembered = parseRememberedSerialIdentity(
+            JSON.parse(
+              window.localStorage.getItem(SERIAL_IDENTITY_STORAGE_KEY) ??
+                window.localStorage.getItem(
+                  LEGACY_SERIAL_IDENTITY_STORAGE_KEY,
+                ) ??
+                "null",
+            ),
+          );
+        } catch {
+          remembered = null;
+        }
+        const port = chooseAuthorizedSerialPort(ports, remembered);
+        if (!port) {
+          setAutomaticConnectionStatus(
+            ports.length > 1 ? "multiple-ports" : "needs-permission",
+          );
+          setNotice(
+            ports.length > 1
+              ? "승인된 포트가 여러 개입니다. 사용할 조종기를 한 번 선택해 주세요."
+              : "조종기를 USB에 연결한 뒤 처음 연결하기를 눌러 주세요.",
+          );
+          return;
+        }
+        await openSerialPort(
+          port,
+          true,
+          remembered?.baudRate ?? baudRate,
+        );
+      } catch (error) {
+        if (!active) return;
+        setAutomaticConnectionStatus("error");
+        setUiError(`자동 연결 실패: ${errorMessage(error)}`);
+      }
+    };
 
-    try {
-      await adapter.connect();
-      hasSerialSelectionRef.current = true;
-      setNotice(
-        `Serial 포트가 ${baudRate} baud로 열렸습니다. BYROBOT 조종기라면 ‘입력 활성화’를 누르세요.`,
-      );
-    } catch (error) {
-      setUiError(errorMessage(error));
-    } finally {
-      syncSerial();
-      setSerialBusy(false);
-    }
+    const handlePhysicalConnect = () => {
+      autoConnectAttemptedRef.current = false;
+      void attemptAutomaticConnection();
+    };
+    navigator.serial.addEventListener("connect", handlePhysicalConnect);
+    void attemptAutomaticConnection();
+    return () => {
+      active = false;
+      navigator.serial?.removeEventListener("connect", handlePhysicalConnect);
+    };
+  }, [baudRate, openSerialPort, support.checked, support.serial]);
+
+  const restartAutomaticCentering = () => {
+    const next = restartCenterCalibration(
+      centerCalibrationRef.current.axisCount || serialState.rawAxes?.length || 4,
+    );
+    centerCalibrationRef.current = next;
+    lastCenterJoystickAtRef.current = null;
+    setCenterCalibration(next);
+    setNotice("양쪽 스틱을 놓고 잠시 기다려 주세요. 중앙값을 다시 맞춥니다.");
   };
 
   const disconnectSerial = async () => {
@@ -801,6 +990,13 @@ export function ControllerDiagnosticsPage() {
       : activeMethod === "gamepad" && selectedGamepad
         ? `gamepad:${selectedGamepad.index}:${selectedGamepad.id}`
         : null;
+  const automaticCenters =
+    activeMethod === "serial" &&
+    calibrationOwnerKey === activeSourceKey &&
+    centerCalibration.status === "complete" &&
+    centerCalibration.axisCount === activeRawAxes.length
+      ? centerCalibration.centers
+      : EMPTY_AUTOMATIC_CENTERS;
   const activeCalibrations = useMemo(
     () => (calibrationOwnerKey === activeSourceKey ? calibrations : []),
     [activeSourceKey, calibrationOwnerKey, calibrations],
@@ -841,6 +1037,7 @@ export function ControllerDiagnosticsPage() {
       ? createFixedAxisProfile(activeRawAxes, basicAssignments, {
           deadZone: 0,
           invertedAxes: basicInvertedAxes,
+          centers: automaticCenters,
         })
       : [];
   const customFixedCalibrations = createFixedAxisProfile(
@@ -849,6 +1046,7 @@ export function ControllerDiagnosticsPage() {
     {
       deadZone: 0,
       invertedAxes: invertedAxesFromPreferences(preferences),
+      centers: automaticCenters,
     },
   );
   const developerCalibratedState = projectMappedControllerState(
@@ -881,10 +1079,11 @@ export function ControllerDiagnosticsPage() {
             : createFixedAxisProfile(
                 rawAxes,
                 axisAssignmentsFromPreferences(preferences, rawAxes.length),
-                {
-                  deadZone: 0,
-                  invertedAxes: invertedAxesFromPreferences(preferences),
-                },
+              {
+                deadZone: 0,
+                invertedAxes: invertedAxesFromPreferences(preferences),
+                centers: automaticCenters,
+              },
               );
         return projectMappedControllerState(state, profile);
       }
@@ -903,6 +1102,7 @@ export function ControllerDiagnosticsPage() {
           ? createFixedAxisProfile(rawAxes, assignments, {
               deadZone: 0,
               invertedAxes,
+              centers: automaticCenters,
             })
           : [];
       return projectMappedControllerState(state, profile);
@@ -910,6 +1110,7 @@ export function ControllerDiagnosticsPage() {
     return () => manager.setStateProjector(null);
   }, [
     activeCalibrations,
+    automaticCenters,
     calibrationStarted,
     developerCalibratedState.mappingStatus,
     manager,
@@ -967,7 +1168,10 @@ export function ControllerDiagnosticsPage() {
     commonControllerState.connected && stickInputOk && buttonInputOk,
   );
   const ready =
-    inputActive && mappingComplete && commonControllerState.connected;
+    stickInputOk &&
+    mappingComplete &&
+    commonControllerState.connected &&
+    (activeMethod !== "serial" || centerCalibration.status === "complete");
   const activeButtonTransitions = commonControllerState.buttonTransitions ?? [];
   const recentButtonNumber =
     [...activeButtonTransitions]
@@ -993,7 +1197,9 @@ export function ControllerDiagnosticsPage() {
         ? "입력 확인 중"
         : "연결 필요";
   const simpleNotice = ready
-    ? "준비됐습니다. 이륙 버튼을 누른 뒤 스틱으로 드론을 움직여 보세요."
+    ? activeMethod !== "serial" || centerCalibration.status === "complete"
+      ? "조종 준비 완료. 양쪽 스틱을 아래쪽 안으로 모아 시동을 걸어 주세요."
+      : "스틱을 중앙에 놓아 주세요. 자동으로 중심을 맞추고 있습니다."
     : activeMethod === "serial" &&
         controllerInput?.evidence.joystickDecoded &&
         !serialStickInputFresh
@@ -1149,8 +1355,8 @@ export function ControllerDiagnosticsPage() {
         <div className="pilot-brand">
           <span className="pilot-brand-mark" aria-hidden="true">BD</span>
           <div>
-            <span>바이로봇 조종 연습</span>
-            <h1>가상 드론 테스트</h1>
+            <span>바이로봇 실제 조종기 체험</span>
+            <h1>미래항공모빌리티 운항 훈련</h1>
           </div>
         </div>
         <div className={ready ? "pilot-ready-badge is-ready" : "pilot-ready-badge"}>
@@ -1171,12 +1377,19 @@ export function ControllerDiagnosticsPage() {
           mappingComplete={mappingComplete}
           ready={ready}
           busy={serialBusy}
+          automaticConnectionStatus={automaticConnectionStatus}
+          centerStatus={
+            activeMethod === "serial"
+              ? centerCalibration.status
+              : selectedGamepad
+                ? "complete"
+                : "idle"
+          }
           error={uiError}
           notice={simpleNotice}
           onSelectPort={selectSerialPort}
           onConnect={connectSerial}
-          onActivateInput={activateByrobotInput}
-          onDisconnect={disconnectSerial}
+          onRecenter={restartAutomaticCentering}
         />
 
         <DroneSimulator
@@ -1855,8 +2068,8 @@ export function ControllerDiagnosticsPage() {
       </details>
 
       <footer className="pilot-footer">
-        <span>바이로봇 가상 드론 조종 테스트</span>
-        <span>테스트 격자 · 드론 1대 · 기본 조종</span>
+        <span>바이로봇 미래항공모빌리티 운항 체험</span>
+        <span>조종 훈련 · 자격시험 · 교육용 임무</span>
       </footer>
     </main>
   );

@@ -266,7 +266,7 @@ export function FlightSettingsPanel({
           <small>
             {basicButtonsAvailable
               ? "확인된 기본 버튼 조작을 사용합니다."
-              : "USB 버튼 비트는 아직 확인 중입니다. 시동·이륙·착륙은 화면 버튼을 사용하세요."}
+              : "Mode 2 스틱 시동과 실제 스로틀 이착륙이 기본입니다. 화면 비행 버튼은 연결 점검과 수업 보조용입니다."}
           </small>
         </div>
       ) : (

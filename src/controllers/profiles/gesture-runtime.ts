@@ -11,6 +11,7 @@ import type {
 
 const OPERATION_PRIORITY: readonly ControllerOperation[] = [
   "emergency",
+  "missionAction",
   "landing",
   "takeoff",
   "start",

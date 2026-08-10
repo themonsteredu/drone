@@ -13,7 +13,7 @@ export type CustomAxisMapping = Record<
 >;
 
 export interface SimulatorPreferences {
-  version: 1;
+  version: 2;
   speedLevel: FlightSpeedLevel;
   controlMode: ControllerControlMode;
   headless: boolean;
@@ -25,6 +25,8 @@ export interface SimulatorPreferences {
 }
 
 export const SIMULATOR_PREFERENCES_STORAGE_KEY =
+  "byrobot-drone-simulator-preferences-v2";
+export const LEGACY_SIMULATOR_PREFERENCES_STORAGE_KEY =
   "byrobot-drone-simulator-preferences-v1";
 
 export const SPEED_LEVEL_SCALE: Readonly<Record<FlightSpeedLevel, number>> = {
@@ -37,17 +39,19 @@ export const SPEED_LEVEL_SCALE: Readonly<Record<FlightSpeedLevel, number>> = {
  * The default custom mapping mirrors the verified Coding/E input order. Roll
  * is inverted because the current hardware test established that its raw
  * right-stick X sign is opposite the simulator's semantic `roll + = right`
- * contract. The other three axes deliberately keep their existing signs.
+ * contract. Current hardware testing also established that left-stick X must
+ * be inverted for semantic `yaw + = clockwise`. Pitch and throttle retain
+ * their previously verified signs.
  */
 export const DEFAULT_CUSTOM_AXIS_MAPPING: Readonly<CustomAxisMapping> = {
   throttle: { axisIndex: 1, inverted: false },
-  yaw: { axisIndex: 0, inverted: false },
+  yaw: { axisIndex: 0, inverted: true },
   pitch: { axisIndex: 3, inverted: false },
   roll: { axisIndex: 2, inverted: true },
 };
 
 export const DEFAULT_SIMULATOR_PREFERENCES: Readonly<SimulatorPreferences> = {
-  version: 1,
+  version: 2,
   speedLevel: "normal",
   controlMode: "byrobot",
   headless: false,
@@ -105,7 +109,7 @@ export function parseSimulatorPreferences(
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<SimulatorPreferences>;
   if (
-    candidate.version !== 1 ||
+    candidate.version !== 2 ||
     !["beginner", "normal", "high"].includes(candidate.speedLevel ?? "") ||
     !["byrobot", "custom"].includes(candidate.controlMode ?? "") ||
     typeof candidate.headless !== "boolean" ||
@@ -128,7 +132,7 @@ export function parseSimulatorPreferences(
   if (new Set(axisIndices).size !== axisIndices.length) return null;
 
   return {
-    version: 1,
+    version: 2,
     speedLevel: candidate.speedLevel as FlightSpeedLevel,
     controlMode: candidate.controlMode as ControllerControlMode,
     headless: candidate.headless,
@@ -137,6 +141,49 @@ export function parseSimulatorPreferences(
     sensitivity: candidate.sensitivity,
     expo: candidate.expo,
     customAxisMapping: cloneAxisMapping(candidate.customAxisMapping),
+  };
+}
+
+const LEGACY_DEFAULT_AXIS_MAPPING: Readonly<CustomAxisMapping> = {
+  throttle: { axisIndex: 1, inverted: false },
+  yaw: { axisIndex: 0, inverted: false },
+  pitch: { axisIndex: 3, inverted: false },
+  roll: { axisIndex: 2, inverted: true },
+};
+
+function sameAxisMapping(
+  left: CustomAxisMapping,
+  right: Readonly<CustomAxisMapping>,
+): boolean {
+  return (["throttle", "yaw", "pitch", "roll"] as const).every(
+    (axis) =>
+      left[axis].axisIndex === right[axis].axisIndex &&
+      left[axis].inverted === right[axis].inverted,
+  );
+}
+
+/**
+ * Migrates the previous defaults without overwriting an intentional custom
+ * mapping. Only the exact legacy default receives the hardware-tested Yaw fix.
+ */
+export function migrateLegacySimulatorPreferences(
+  value: unknown,
+): SimulatorPreferences | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Omit<
+    Partial<SimulatorPreferences>,
+    "version"
+  > & { version?: unknown };
+  const upgraded = parseSimulatorPreferences({ ...candidate, version: 2 });
+  if (!upgraded || candidate.version !== 1) return null;
+  return {
+    ...upgraded,
+    customAxisMapping: sameAxisMapping(
+      upgraded.customAxisMapping,
+      LEGACY_DEFAULT_AXIS_MAPPING,
+    )
+      ? cloneAxisMapping(DEFAULT_CUSTOM_AXIS_MAPPING)
+      : cloneAxisMapping(upgraded.customAxisMapping),
   };
 }
 

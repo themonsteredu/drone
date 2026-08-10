@@ -17,6 +17,7 @@ const OPERATION_LABEL: Readonly<Record<ControllerOperation, string>> = {
   takeoff: "이륙",
   landing: "착륙",
   emergency: "긴급",
+  missionAction: "촬영 / 확인",
 };
 
 const OPERATIONS = [
@@ -24,6 +25,7 @@ const OPERATIONS = [
   "takeoff",
   "landing",
   "emergency",
+  "missionAction",
 ] as const satisfies readonly ControllerOperation[];
 
 interface ByrobotOperationCaptureProps {

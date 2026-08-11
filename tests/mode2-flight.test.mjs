@@ -135,17 +135,26 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
   }
 });
 
-test("a realistic 0.56 diagonal corner clears the Mode 2 threshold", () => {
+test("Mode 2 arming holds the documented 0.70 axis threshold", () => {
+  const corner = (magnitude) =>
+    mappedState({
+      throttle: -magnitude,
+      yaw: magnitude,
+      pitch: -magnitude,
+      roll: -magnitude,
+    });
+
   assert.equal(
-    gestures.isMode2ArmingGestureActive(
-      mappedState({
-        throttle: -0.56,
-        yaw: 0.56,
-        pitch: -0.56,
-        roll: -0.56,
-      }),
-    ),
-    true,
+    gestures.isMode2ArmingGestureActive(corner(0.56)),
+    false,
+    "a half-pushed diagonal is not the documented start gesture",
+  );
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.69)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.7)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(1)), true);
+  assert.equal(
+    gestures.resolveMode2GestureConfig().armingAxisThreshold,
+    0.7,
   );
 });
 
@@ -258,27 +267,50 @@ test("FlightController drives READY -> ARMING -> ARMED and gates emergency by se
   );
 });
 
-test("FlightController completes a held corner even when the controller reports only the change", () => {
+const ARMING_CORNER = {
+  throttle: -0.85,
+  yaw: 0.85,
+  pitch: -0.85,
+  roll: -0.85,
+};
+
+test("a corner held through a live 0x71 stream completes the three-second hold", () => {
   const flightController = new controller.FlightController(
     DEFAULT_PREFERENCES,
   );
-  flightController.setControllerState(
-    mappedState({
-      throttle: -0.65,
-      yaw: 0.65,
-      pitch: -0.65,
-      roll: -0.65,
-    }),
-    true,
-    0,
-  );
 
-  for (const now of [0, 1000, 2000, 3000]) {
-    flightController.step(1 / 60, now, true);
+  // The accepted-joystick timestamp advances on every CRC-valid packet, so a
+  // stick the student is still holding keeps reporting fresh input.
+  for (let now = 0; now <= 3000; now += 100) {
+    flightController.setControllerState(mappedState(ARMING_CORNER), true, now);
+    flightController.step(0.1, now, true);
   }
 
   assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
   assert.equal(flightController.getMode2GestureState().armingProgress, 1);
+});
+
+test("a corner sample that stops streaming cancels arming instead of completing it", () => {
+  const flightController = new controller.FlightController(
+    DEFAULT_PREFERENCES,
+  );
+  flightController.setControllerState(mappedState(ARMING_CORNER), true, 0);
+
+  flightController.step(1 / 60, 0, true);
+  assert.equal(
+    flightController.getState().phase,
+    model.FLIGHT_PHASE.ARMING,
+    "the first fresh sample starts the hold",
+  );
+
+  // No further input arrives. Once the sample is stale the hold must restart
+  // rather than coast to ARMED on a controller that is no longer reporting.
+  for (const now of [600, 1500, 3000, 3600]) {
+    flightController.step(1 / 60, now, true);
+  }
+
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.READY);
+  assert.equal(flightController.getMode2GestureState().armingProgress, 0);
 });
 
 test("FlightController applies bounded mission-neutral world force only in flight", () => {

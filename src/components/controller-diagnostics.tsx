@@ -1172,11 +1172,6 @@ export function ControllerDiagnosticsPage() {
     mappingComplete &&
     commonControllerState.connected &&
     (activeMethod !== "serial" || centerCalibration.status === "complete");
-  const simulatorControlsReady = Boolean(
-    mappingComplete &&
-      commonControllerState.connected &&
-      (activeMethod !== "serial" || centerCalibration.status === "complete"),
-  );
   const activeButtonTransitions = commonControllerState.buttonTransitions ?? [];
   const recentButtonNumber =
     [...activeButtonTransitions]
@@ -1399,7 +1394,7 @@ export function ControllerDiagnosticsPage() {
 
         <DroneSimulator
           controllerState={commonControllerState}
-          controlsEnabled={simulatorControlsReady}
+          controlsEnabled={ready}
           sourceSessionKey={activeSourceKey}
           mappingSourceId={mappingSourceId}
           inputUpdatedAt={activeInputUpdatedAt}

@@ -22,7 +22,6 @@ import {
 } from "./mode2-gesture-detector";
 
 export const INPUT_STALE_AFTER_MS = 500;
-export const ARMING_INPUT_HOLD_AFTER_MS = 3500;
 
 const ZERO_INPUT: Readonly<FlightControlInput> = {
   throttle: 0,
@@ -165,21 +164,16 @@ export class FlightController {
         this.inputUpdatedAt !== null &&
         now - this.inputUpdatedAt <= INPUT_STALE_AFTER_MS,
     );
-    // Some BYROBOT controllers report a held corner only when it changes.
-    // Preserve that grounded gesture long enough to complete the documented
-    // three-second hold. Flight motion still uses the stricter 500 ms limit.
-    const armingInputIsFresh = Boolean(
-      pageVisible &&
-        this.controlsEnabled &&
-        this.inputUpdatedAt !== null &&
-        now - this.inputUpdatedAt <= ARMING_INPUT_HOLD_AFTER_MS,
-    );
     if (!inputIsFresh && this.inputWasFresh) this.neutralize();
     this.inputWasFresh = inputIsFresh;
 
     if (this.preferences.controlMode === "byrobot") {
+      // The documented three-second hold must be continuous, so a stale sample
+      // can never stand in for a stick the student is still holding. The 0x71
+      // stream refreshes `inputUpdatedAt` on every accepted packet, not only on
+      // change, so a genuinely held corner stays fresh on its own.
       const gesture = this.mode2GestureDetector.observe(
-        armingInputIsFresh ? this.controllerState : null,
+        inputIsFresh ? this.controllerState : null,
         now,
         this.mode2Bindings,
       );

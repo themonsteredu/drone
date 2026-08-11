@@ -647,10 +647,14 @@ export function applyFlightCommand(
     return withPhase(current, FLIGHT_PHASE.READY);
   }
 
+  // STOP is accepted for the same reason the legacy `start` command accepts it:
+  // an unlatched grounded stop is a normal place for the screen 시동 button to
+  // arm again. `getFlightActionAvailability` offers the action from all three.
   if (
     command === "arm" &&
     (current.phase === FLIGHT_PHASE.READY ||
-      current.phase === FLIGHT_PHASE.ARMING)
+      current.phase === FLIGHT_PHASE.ARMING ||
+      current.phase === FLIGHT_PHASE.STOP)
   ) {
     return withPhase(current, FLIGHT_PHASE.ARMED);
   }

@@ -270,7 +270,9 @@ export class ExperienceCoordinator {
     const update = applyTeacherShortcut(this.progress, shortcut);
     this.progress = update.state;
     this.requestFlightReset =
-      update.effects.resetFlight || update.effects.resetDronePosition;
+      this.requestFlightReset ||
+      update.effects.resetFlight ||
+      update.effects.resetDronePosition;
     const changesStage =
       shortcut === "reset_training" ||
       shortcut === "start_certification" ||
@@ -461,6 +463,12 @@ export class ExperienceCoordinator {
         emergencyActivated:
           this.previousFlight.phase !== "EMERGENCY" &&
           flight.phase === "EMERGENCY",
+        collisionEnabled:
+          flight.position.y > 0.05 &&
+          (flight.phase === "TAKEOFF" ||
+            flight.phase === "FLIGHT" ||
+            flight.phase === "LANDING" ||
+            flight.phase === "EMERGENCY"),
         stabilitySample,
       });
       this.missionActionQueued = false;
@@ -508,6 +516,7 @@ export class ExperienceCoordinator {
             previousPosition: { ...this.missionRuntime.previousPosition },
             foundTargetIds: [...this.missionRuntime.foundTargetIds],
             activeWindZoneIds: [...this.missionRuntime.activeWindZoneIds],
+            activeObstacleIds: [...this.missionRuntime.activeObstacleIds],
             collisionCooldownUntil: {
               ...this.missionRuntime.collisionCooldownUntil,
             },
@@ -681,15 +690,10 @@ export class ExperienceCoordinator {
     ];
   }
 
-  /** Keeps only each message's remaining lifetime when a stage clock restarts. */
+  /** A new activity must never inherit a collision flash or stale message. */
   private resetStageClock(): void {
-    const previousElapsed = this.stageElapsedSeconds;
-    this.feedback = this.feedback
-      .filter((item) => item.expiresAt > previousElapsed)
-      .map((item) => ({
-        ...item,
-        expiresAt: item.expiresAt - previousElapsed,
-      }));
+    this.feedback = [];
+    this.collisionPulseUntil = 0;
     this.stageElapsedSeconds = 0;
   }
 

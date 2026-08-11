@@ -135,6 +135,20 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
   }
 });
 
+test("a realistic 0.56 diagonal corner clears the Mode 2 threshold", () => {
+  assert.equal(
+    gestures.isMode2ArmingGestureActive(
+      mappedState({
+        throttle: -0.56,
+        yaw: 0.56,
+        pitch: -0.56,
+        roll: -0.56,
+      }),
+    ),
+    true,
+  );
+});
+
 test("emergency requires low throttle plus an explicitly bound logical L button", () => {
   const state = mappedState({ throttle: -0.9 }, { logical_l: true });
   assert.equal(
@@ -242,6 +256,29 @@ test("FlightController drives READY -> ARMING -> ARMED and gates emergency by se
     flightController.getState().phase,
     model.FLIGHT_PHASE.EMERGENCY,
   );
+});
+
+test("FlightController completes a held corner even when the controller reports only the change", () => {
+  const flightController = new controller.FlightController(
+    DEFAULT_PREFERENCES,
+  );
+  flightController.setControllerState(
+    mappedState({
+      throttle: -0.65,
+      yaw: 0.65,
+      pitch: -0.65,
+      roll: -0.65,
+    }),
+    true,
+    0,
+  );
+
+  for (const now of [0, 1000, 2000, 3000]) {
+    flightController.step(1 / 60, now, true);
+  }
+
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
+  assert.equal(flightController.getMode2GestureState().armingProgress, 1);
 });
 
 test("FlightController applies bounded mission-neutral world force only in flight", () => {

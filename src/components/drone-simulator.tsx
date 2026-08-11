@@ -391,6 +391,7 @@ export function DroneSimulator({
         experienceCoordinator.synchronizeFlightState(next);
       }
       setTelemetry(cloneFlightState(next));
+      return next;
     },
     [experienceCoordinator, flightController],
   );
@@ -677,26 +678,35 @@ export function DroneSimulator({
   }, [controlsEnabled, experienceCoordinator, refreshExperience]);
 
   const beginTutorial = useCallback(() => {
-    experienceCoordinator.beginTutorial(flightController.getState());
+    const reset = dispatchFlightAction("reset");
+    experienceCoordinator.beginTutorial(reset);
+    experienceCoordinator.consumeFlightResetRequest();
+    experienceCoordinator.synchronizeFlightState(reset);
     refreshExperience();
-  }, [experienceCoordinator, flightController, refreshExperience]);
+  }, [dispatchFlightAction, experienceCoordinator, refreshExperience]);
 
   const selectMission = useCallback(
     (missionId: string) => {
       if (!MISSION_DEFINITIONS.some((mission) => mission.id === missionId)) return;
+      const reset = dispatchFlightAction("reset");
       experienceCoordinator.selectMission(
         missionId,
-        flightController.getState(),
+        reset,
       );
+      experienceCoordinator.consumeFlightResetRequest();
+      experienceCoordinator.synchronizeFlightState(reset);
       refreshExperience();
     },
-    [experienceCoordinator, flightController, refreshExperience],
+    [dispatchFlightAction, experienceCoordinator, refreshExperience],
   );
 
   const retryCertification = useCallback(() => {
-    experienceCoordinator.retryCertification(flightController.getState());
+    const reset = dispatchFlightAction("reset");
+    experienceCoordinator.retryCertification(reset);
+    experienceCoordinator.consumeFlightResetRequest();
+    experienceCoordinator.synchronizeFlightState(reset);
     refreshExperience();
-  }, [experienceCoordinator, flightController, refreshExperience]);
+  }, [dispatchFlightAction, experienceCoordinator, refreshExperience]);
 
   const openMissionSelection = useCallback(() => {
     experienceCoordinator.openMissionSelection();
@@ -709,9 +719,13 @@ export function DroneSimulator({
         TEACHER_SHORTCUT_MAP[action],
         flightController.getState(),
       );
+      if (experienceCoordinator.consumeFlightResetRequest()) {
+        const reset = dispatchFlightAction("reset");
+        experienceCoordinator.synchronizeFlightState(reset);
+      }
       refreshExperience();
     },
-    [experienceCoordinator, flightController, refreshExperience],
+    [dispatchFlightAction, experienceCoordinator, flightController, refreshExperience],
   );
 
   const dismissFeedback = useCallback(

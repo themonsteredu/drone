@@ -48,7 +48,9 @@ export const DEFAULT_MODE2_GESTURE_BINDINGS: Readonly<Mode2GestureBindings> =
 export const DEFAULT_MODE2_GESTURE_CONFIG: Readonly<Mode2GestureConfig> =
   Object.freeze({
     armingHoldMs: 3000,
-    armingAxisThreshold: 0.7,
+    // A 45-degree stick corner is only about 0.707 on each axis. Keeping the
+    // threshold below that leaves room for real controller travel/calibration.
+    armingAxisThreshold: 0.55,
     emergencyThrottleThreshold: -0.75,
   });
 
@@ -81,7 +83,7 @@ export function resolveMode2GestureConfig(
   return {
     armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 3000)),
     armingAxisThreshold: clamp(
-      Math.abs(finiteOr(merged.armingAxisThreshold, 0.7)),
+      Math.abs(finiteOr(merged.armingAxisThreshold, 0.55)),
       0.2,
       1,
     ),

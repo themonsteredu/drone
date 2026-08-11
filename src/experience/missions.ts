@@ -224,6 +224,7 @@ export interface MissionRuntimeState {
   previousPosition: Vector3;
   foundTargetIds: readonly string[];
   activeWindZoneIds: readonly string[];
+  activeObstacleIds: readonly string[];
   collisionCount: number;
   collisionCooldownUntil: Readonly<Record<string, number>>;
   battery: BatteryState;
@@ -242,6 +243,8 @@ export interface MissionStepInput {
   missionActionPressed?: boolean;
   landed?: boolean;
   emergencyActivated?: boolean;
+  /** Grounded READY/ARMING states observe the scene but cannot collide. */
+  collisionEnabled?: boolean;
   /** 0 is unstable and 1 is fully stable for this sample. */
   stabilitySample?: number;
 }
@@ -262,6 +265,7 @@ export function createMissionRuntimeState(
     previousPosition: { ...mission.startPosition },
     foundTargetIds: [],
     activeWindZoneIds: [],
+    activeObstacleIds: [],
     collisionCount: 0,
     collisionCooldownUntil: {},
     battery: createBatteryState(mission.batteryStartPercent),
@@ -294,6 +298,8 @@ export function stepMission(
   const foundTargetIds = new Set(previous.foundTargetIds);
   const activeWindZoneIds = new Set<string>();
   const previousWindZoneIds = new Set(previous.activeWindZoneIds);
+  const activeObstacleIds = new Set<string>();
+  const previousObstacleIds = new Set(previous.activeObstacleIds);
   const collisionCooldownUntil = { ...previous.collisionCooldownUntil };
   let collisionCount = previous.collisionCount;
   let emergencyActivations = previous.emergencyActivations;
@@ -312,7 +318,11 @@ export function stepMission(
   }
 
   for (const obstacle of mission.obstacles) {
+    const inside = isPointInsideVolume(input.position, obstacle.volume);
+    if (inside) activeObstacleIds.add(obstacle.id);
     if (
+      input.collisionEnabled !== false &&
+      !previousObstacleIds.has(obstacle.id) &&
       segmentIntersectsObstacle(previous.previousPosition, input.position, obstacle) &&
       elapsedSeconds >= (collisionCooldownUntil[obstacle.id] ?? 0)
     ) {
@@ -394,6 +404,7 @@ export function stepMission(
     previousPosition: { ...input.position },
     foundTargetIds: [...foundTargetIds],
     activeWindZoneIds: [...activeWindZoneIds],
+    activeObstacleIds: [...activeObstacleIds],
     collisionCount,
     collisionCooldownUntil,
     battery: batteryStep.state,

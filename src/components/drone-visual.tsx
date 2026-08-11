@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { DroneTransform } from "../simulator/drone-transform";
+import { projectScenePoint } from "../simulator/scene-projection";
 import {
   EMPTY_DRONE_SCENE,
   type DroneScenePresentation,
@@ -13,19 +14,7 @@ interface DroneVisualProps {
 }
 
 
-function projectPoint(
-  x: number,
-  y: number,
-  z: number,
-  originX: number,
-  originY: number,
-  scale: number,
-): [number, number] {
-  return [
-    originX + (x - z) * scale,
-    originY + (x + z) * scale * 0.48 - y * scale * 1.35,
-  ];
-}
+const projectPoint = projectScenePoint;
 
 function drawDroneScene(
   canvas: HTMLCanvasElement,

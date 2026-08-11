@@ -89,6 +89,7 @@ function stepMissionAt(mission, state, position, options = {}) {
     missionActionPressed: options.missionActionPressed ?? false,
     landed: options.landed ?? false,
     emergencyActivated: options.emergencyActivated ?? false,
+    collisionEnabled: options.collisionEnabled,
     stabilitySample: options.stabilitySample ?? 0.9,
   });
 }
@@ -319,6 +320,57 @@ test("mission runtime emits wind enter and exit events", () => {
   assert.equal(entered.events.some((event) => event.type === "windEntered"), true);
   const exited = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, { x: 0, y: 1, z: 17 });
   assert.equal(exited.events.some((event) => event.type === "windExited"), true);
+});
+
+test("mission obstacle collision fires on entry, not repeatedly while stationary", () => {
+  const obstacle = MEDICAL_DELIVERY_MISSION.obstacles[0];
+  const inside = { x: -3.4, y: 1, z: 7 };
+  const outside = { x: 0, y: 1, z: 7 };
+  let state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+
+  const entered = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, inside);
+  state = entered.state;
+  assert.equal(
+    entered.events.filter((event) => event.type === "collision").length,
+    1,
+  );
+  assert.deepEqual(state.activeObstacleIds, [obstacle.id]);
+
+  const stationary = stepMissionAt(
+    MEDICAL_DELIVERY_MISSION,
+    state,
+    inside,
+    { elapsedSeconds: 2 },
+  );
+  assert.equal(
+    stationary.events.filter((event) => event.type === "collision").length,
+    0,
+  );
+
+  state = stepMissionAt(
+    MEDICAL_DELIVERY_MISSION,
+    stationary.state,
+    outside,
+  ).state;
+  const reentered = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, inside);
+  assert.equal(
+    reentered.events.filter((event) => event.type === "collision").length,
+    1,
+  );
+});
+
+test("grounded mission observation never emits a collision", () => {
+  const state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+  const grounded = stepMissionAt(
+    MEDICAL_DELIVERY_MISSION,
+    state,
+    { x: -3.4, y: 0, z: 7 },
+    { collisionEnabled: false },
+  );
+  assert.equal(
+    grounded.events.some((event) => event.type === "collision"),
+    false,
+  );
 });
 
 test("medical delivery completes only on a successful hospital B landing", () => {

@@ -44,14 +44,20 @@ export const UNVERIFIED_DEFAULT_OPERATIONS: DefaultControllerOperationGestures =
   });
 
 /**
- * Verified 0x71 raw order: LX, LY, RX, RY. The semantic assignment retains the
- * tested throttle/pitch signs and flips only right-X -> roll so a right stick
- * command moves toward the aircraft's right-hand side.
+ * Verified 0x71 raw order: LX, LY, RX, RY, mapping straight through with no
+ * sign inversion. Hardware sessions reversed both inversions this preset used
+ * to carry, and the resulting all-direct layout finally gives both sticks the
+ * same left/right polarity:
  *
- * left-X -> yaw is deliberately NOT inverted. It was inverted once, which made
- * a stick-right command rotate counter-clockwise and left the Mode 2 start
- * gesture unreachable: that gesture requires semantic yaw >= +threshold, so an
- * inverted left-X can never satisfy it at any threshold.
+ * - left-X -> yaw was inverted, which rotated counter-clockwise on a
+ *   stick-right command and left the Mode 2 start gesture unreachable. That
+ *   gesture requires semantic yaw >= +threshold, so an inverted left-X fails
+ *   it at any threshold.
+ * - right-X -> roll was inverted, which moved the aircraft to its left on a
+ *   stick-right command.
+ *
+ * Keep this table in step with tests/axis-preset-contract.test.mjs, which
+ * checks the four stick directions and the start gesture together.
  */
 export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
   Object.freeze({
@@ -80,7 +86,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 2,
         physicalAxis: "right-x",
         control: "roll",
-        inverted: true,
+        inverted: false,
       }),
       Object.freeze({
         rawAxisIndex: 3,
@@ -99,7 +105,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
       status: "verified",
       scope: "protocol-and-hardware",
       summary:
-        "The official joystick structure supplies left/right X/Y in an 8-byte payload; the semantic signs apply the locally hardware-tested right-X -> roll correction while throttle, yaw and pitch retain their established signs.",
+        "The official joystick structure supplies left/right X/Y in an 8-byte payload; hardware sessions confirmed all four axes map directly, so no semantic sign inversion is applied.",
       sourceUrls: Object.freeze([OFFICIAL_BYROBOT_JOYSTICK_STRUCT_URL]),
     }),
   });

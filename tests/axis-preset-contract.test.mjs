@@ -100,7 +100,7 @@ test("the default preset keeps the documented semantic stick directions", () => 
     "right stick up moves forward",
   );
   assert.equal(
-    project(raw({ rightX: -1 })).roll,
+    project(raw({ rightX: 1 })).roll,
     1,
     "right stick right moves toward the aircraft's right-hand side",
   );
@@ -109,7 +109,7 @@ test("the default preset keeps the documented semantic stick directions", () => 
 test("the documented Mode 2 corner reaches the arming gesture through the preset", () => {
   // Left stick about 5 o'clock and right stick about 7 o'clock, per README.
   const corner = project(
-    raw({ leftX: 1, leftY: -1, rightX: 1, rightY: -1 }),
+    raw({ leftX: 1, leftY: -1, rightX: -1, rightY: -1 }),
   );
 
   assert.equal(corner.mappingStatus, "mapped");
@@ -120,14 +120,23 @@ test("the documented Mode 2 corner reaches the arming gesture through the preset
   );
 });
 
-test("only right-X carries a sign inversion", () => {
+test("no axis carries a sign inversion", () => {
   assert.deepEqual(
     PRESET.bindings.map((binding) => [binding.control, binding.inverted]),
     [
       ["yaw", false],
       ["throttle", false],
-      ["roll", true],
+      ["roll", false],
       ["pitch", false],
     ],
+  );
+});
+
+test("both sticks share one left/right polarity", () => {
+  // The two X axes are the same kind of hardware. When their signs disagree,
+  // one of them is wrong; that mismatch hid the roll inversion for a while.
+  assert.equal(
+    Math.sign(project(raw({ leftX: 1 })).yaw),
+    Math.sign(project(raw({ rightX: 1 })).roll),
   );
 });

@@ -75,7 +75,7 @@ test("provides distinct Smart, PRC-95, Battle Drone, and generic profiles", () =
   );
 });
 
-test("strict 0x71 preset applies the hardware-tested roll correction only", () => {
+test("strict 0x71 preset maps all four axes directly, with no sign inversion", () => {
   const preset = profiles.BYROBOT_STRICT_JOYSTICK_AXIS_PRESET;
   assert.deepEqual(preset.rawAxisOrder, [
     "left-x",
@@ -90,11 +90,11 @@ test("strict 0x71 preset applies the hardware-tested roll correction only", () =
       inverted,
     })),
     [
-      // left-X must stay uninverted; see axis-preset-contract.test.mjs for the
-      // stick directions and the Mode 2 start gesture this sign decides.
+      // See axis-preset-contract.test.mjs for the stick directions and the
+      // Mode 2 start gesture these signs decide.
       { rawAxisIndex: 0, control: "yaw", inverted: false },
       { rawAxisIndex: 1, control: "throttle", inverted: false },
-      { rawAxisIndex: 2, control: "roll", inverted: true },
+      { rawAxisIndex: 2, control: "roll", inverted: false },
       { rawAxisIndex: 3, control: "pitch", inverted: false },
     ],
   );

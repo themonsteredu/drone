@@ -209,6 +209,113 @@ function displayButtonId(buttonId: string | undefined): string {
   return buttonId;
 }
 
+interface ButtonMappingPanelProps {
+  actions: readonly MappableButtonAction[];
+  eyebrow: string;
+  heading: string;
+  mappings: ControllerButtonMappings;
+  mappingSourceId: string | null;
+  capture: ButtonCaptureState | null;
+  mappingMessage: string;
+  connected: boolean;
+  /** Explains why an unbound emergency chord stays disabled. */
+  safetyNote: boolean;
+  onStartCapture: (action: MappableButtonAction) => void;
+  onCancelCapture: () => void;
+  onRemoveMapping: (action: MappableButtonAction) => void;
+}
+
+/**
+ * One binding list, rendered both for the bindings the current activity
+ * requires and for the full user-configurable set in lesson setup.
+ */
+function ButtonMappingPanel({
+  actions,
+  eyebrow,
+  heading,
+  mappings,
+  mappingSourceId,
+  capture,
+  mappingMessage,
+  connected,
+  safetyNote,
+  onStartCapture,
+  onCancelCapture,
+  onRemoveMapping,
+}: ButtonMappingPanelProps) {
+  return (
+    <div className="button-mapping-panel">
+      <div className="button-mapping-heading">
+        <div>
+          <span>{eyebrow}</span>
+          <h3>{heading}</h3>
+        </div>
+        {capture ? (
+          <button
+            type="button"
+            className="mapping-cancel"
+            onClick={onCancelCapture}
+          >
+            설정 취소
+          </button>
+        ) : null}
+      </div>
+      <div className="button-mapping-list">
+        {actions.map((action) => {
+          const binding = mappings[action];
+          const belongsToController = binding?.sourceId === mappingSourceId;
+          return (
+            <div
+              key={action}
+              className={
+                capture?.action === action
+                  ? "mapping-row is-listening"
+                  : "mapping-row"
+              }
+            >
+              <div>
+                <span>{ACTION_LABEL[action]}</span>
+                <strong>
+                  {belongsToController
+                    ? displayButtonId(binding?.buttonId)
+                    : "미설정"}
+                </strong>
+              </div>
+              <button
+                type="button"
+                aria-label={`${ACTION_LABEL[action]} 버튼 설정`}
+                aria-pressed={capture?.action === action}
+                onClick={() => onStartCapture(action)}
+                disabled={!connected}
+              >
+                {capture?.action === action ? "버튼을 눌러 주세요" : "설정"}
+              </button>
+              {belongsToController ? (
+                <button
+                  type="button"
+                  className="mapping-clear"
+                  aria-label={`${ACTION_LABEL[action]} 버튼 설정 지우기`}
+                  onClick={() => onRemoveMapping(action)}
+                >
+                  지우기
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mapping-message" role="status">{mappingMessage}</p>
+      {safetyNote ? (
+        <p className="mapping-safety-note">
+          긴급정지는 스로틀을 끝까지 내린 상태에서 여기서 확인한 L 버튼을
+          함께 눌렀을 때만 작동합니다. 확인되지 않은 버튼 값은 자동으로
+          추측하지 않습니다.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function buttonsFromTransitions(
   previous: Readonly<Record<string, boolean>>,
   events: readonly ControllerButtonTransition[],
@@ -811,6 +918,10 @@ export function DroneSimulator({
     telemetry.velocity.z,
   );
   const missionBattery = experience.missionRuntime?.battery.percent ?? 100;
+  /** A scored activity is on the clock, so its setup is no longer editable. */
+  const timedActivityRunning =
+    (domainStage === "CERTIFICATION" && !experience.certificationFinished) ||
+    domainStage === "MISSION";
   const remainingSeconds =
     domainStage === "CERTIFICATION" && !experience.certificationFinished
       ? Math.max(
@@ -957,10 +1068,25 @@ export function DroneSimulator({
       ? (["missionAction"] as const)
       : []),
   ];
-  const mappingActions: readonly MappableButtonAction[] =
+  // Bindings the current activity cannot proceed without stay on the flight
+  // screen; the full user-configurable list lives in the lesson setup section.
+  const requiredMappingActions: readonly MappableButtonAction[] =
+    basicMappingActions;
+  const setupMappingActions: readonly MappableButtonAction[] =
     preferences.controlMode === "custom"
       ? ["start", "takeoff", "land", "emergency", "missionAction"]
-      : basicMappingActions;
+      : [];
+  const mappingPanelProps = {
+    mappings,
+    mappingSourceId,
+    capture,
+    mappingMessage,
+    connected: controllerState.connected,
+    safetyNote: preferences.controlMode === "byrobot" && !hasEmergencyBinding,
+    onStartCapture: startCapture,
+    onCancelCapture: cancelCapture,
+    onRemoveMapping: removeMapping,
+  };
 
   return (
     <section
@@ -982,18 +1108,12 @@ export function DroneSimulator({
         completedStages={completedStudentStages}
       />
 
+      {/* The flight phase is owned by StudentStatusHud's 현재 상태 field. */}
       <div className="simulator-heading experience-simulator-heading">
         <div>
           <span>실제 조종 행동 중심 체험</span>
           <h2 id="drone-simulator-title">미래항공모빌리티 운항 체험</h2>
         </div>
-        <strong
-          className={`flight-mode phase-${telemetry.phase.toLowerCase()}`}
-          role="status"
-          aria-live="polite"
-        >
-          {phaseLabel}
-        </strong>
       </div>
 
       {domainStage === "MISSION_SELECT" ? (
@@ -1128,9 +1248,10 @@ export function DroneSimulator({
                 }}
               />
             ) : null}
+            {/* Phase, altitude and speed belong to StudentStatusHud and
+                FlightTrainingHud. Only heading and ground position, which
+                neither of them shows, are described here for the canvas. */}
             <div id="flight-telemetry" className="flight-telemetry" aria-live="off">
-              <span>비행 상태 <strong>{phaseLabel}</strong></span>
-              <span>고도 <strong>{telemetry.position.y.toFixed(2)} m</strong></span>
               <span>방향 <strong>{Math.round((telemetry.yaw * 180) / Math.PI)}°</strong></span>
               <span>위치 <strong>{telemetry.position.x.toFixed(1)}, {telemetry.position.z.toFixed(1)}</strong></span>
             </div>
@@ -1196,14 +1317,8 @@ export function DroneSimulator({
             >
               위치 초기화
             </button>
-            <button
-              type="button"
-              className="is-emergency"
-              disabled={!availability.emergency}
-              onClick={() => dispatchFlightAction("emergency")}
-            >
-              긴급 안전 착륙
-            </button>
+            {/* 긴급 안전 착륙 stays on the flight stage overlay only, so the
+                safety action has one location the student can rely on. */}
             <p className="screen-control-note">
               <strong>조종기 Mode 2가 기본 조작입니다.</strong>
               <span>화면 버튼은 연결 점검과 수업 보조용으로 동일한 비행 상태를 실행합니다.</span>
@@ -1212,99 +1327,49 @@ export function DroneSimulator({
         </>
       ) : null}
 
-      <FlightSettingsPanel
-        preferences={preferences}
-        axisCount={axisCount}
-        profileName={sourceSessionKey ? controllerProfile.label : "조종기 연결 대기"}
-        basicButtonsAvailable={Boolean(
-          sourceSessionKey && profileHasDefaultButtons,
-        )}
-        onUpdate={onUpdatePreferences}
-        onReset={onResetPreferences}
-      />
+      {/* Only bindings the current activity actually needs stay on the flight
+          screen. Without this the disaster-search mission would pause with no
+          visible way to learn its 촬영 / 확인 button. */}
+      {requiredMappingActions.length > 0 ? (
+        <ButtonMappingPanel
+          {...mappingPanelProps}
+          actions={requiredMappingActions}
+          eyebrow="안전 기능 확인"
+          heading="조종기 버튼 한 번 확인하기"
+        />
+      ) : null}
 
-      {mappingActions.length > 0 ? (
-        <div className="button-mapping-panel">
-          <div className="button-mapping-heading">
-            <div>
-              <span>
-                {preferences.controlMode === "custom"
-                  ? "사용자 설정"
-                  : "안전 기능 확인"}
-              </span>
-              <h3>
-                {preferences.controlMode === "custom"
-                  ? "조종기 버튼 설정"
-                  : "조종기 버튼 한 번 확인하기"}
-              </h3>
-            </div>
-            {capture ? (
-              <button
-                type="button"
-                className="mapping-cancel"
-                onClick={cancelCapture}
-              >
-                설정 취소
-              </button>
+      {/* Setup belongs to lesson preparation, not to a running activity. */}
+      {timedActivityRunning ? null : (
+        <details className="class-setup-details">
+          <summary>
+            <span>수업 준비</span>
+            <small>비행 설정과 조종기 버튼 설정</small>
+          </summary>
+          <div className="class-setup-details__body">
+            <FlightSettingsPanel
+              preferences={preferences}
+              axisCount={axisCount}
+              profileName={
+                sourceSessionKey ? controllerProfile.label : "조종기 연결 대기"
+              }
+              basicButtonsAvailable={Boolean(
+                sourceSessionKey && profileHasDefaultButtons,
+              )}
+              onUpdate={onUpdatePreferences}
+              onReset={onResetPreferences}
+            />
+            {setupMappingActions.length > 0 ? (
+              <ButtonMappingPanel
+                {...mappingPanelProps}
+                actions={setupMappingActions}
+                eyebrow="사용자 설정"
+                heading="조종기 버튼 설정"
+              />
             ) : null}
           </div>
-          <div className="button-mapping-list">
-            {mappingActions.map(
-              (action) => {
-                const binding = mappings[action];
-                const belongsToController =
-                  binding?.sourceId === mappingSourceId;
-                return (
-                  <div
-                    key={action}
-                    className={
-                      capture?.action === action
-                        ? "mapping-row is-listening"
-                        : "mapping-row"
-                    }
-                  >
-                    <div>
-                      <span>{ACTION_LABEL[action]}</span>
-                      <strong>
-                        {belongsToController
-                          ? displayButtonId(binding?.buttonId)
-                          : "미설정"}
-                      </strong>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`${ACTION_LABEL[action]} 버튼 설정`}
-                      aria-pressed={capture?.action === action}
-                      onClick={() => startCapture(action)}
-                      disabled={!controllerState.connected}
-                    >
-                      {capture?.action === action ? "버튼을 눌러 주세요" : "설정"}
-                    </button>
-                    {belongsToController ? (
-                      <button
-                        type="button"
-                        className="mapping-clear"
-                        aria-label={`${ACTION_LABEL[action]} 버튼 설정 지우기`}
-                        onClick={() => removeMapping(action)}
-                      >
-                        지우기
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              },
-            )}
-          </div>
-          <p className="mapping-message" role="status">{mappingMessage}</p>
-          {preferences.controlMode === "byrobot" && !hasEmergencyBinding ? (
-            <p className="mapping-safety-note">
-              긴급정지는 스로틀을 끝까지 내린 상태에서 여기서 확인한 L 버튼을
-              함께 눌렀을 때만 작동합니다. 확인되지 않은 버튼 값은 자동으로
-              추측하지 않습니다.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+        </details>
+      )}
 
       <TeacherTestControls onAction={applyTeacherTestAction} />
     </section>

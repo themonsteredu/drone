@@ -1928,37 +1928,6 @@ h1 {
   margin: 0;
 }
 
-.pilot-ready-badge {
-  align-items: center;
-  background: #fff7eb;
-  border: 1px solid #f2d5ad;
-  border-radius: 999px;
-  color: #9b570d;
-  display: flex;
-  gap: 9px;
-  min-height: 44px;
-  padding: 8px 16px;
-}
-
-.pilot-ready-badge > span {
-  background: #d57917;
-  border-radius: 50%;
-  box-shadow: 0 0 0 5px rgba(213, 121, 23, 0.13);
-  height: 9px;
-  width: 9px;
-}
-
-.pilot-ready-badge.is-ready {
-  background: #eaf8f0;
-  border-color: #b6e1c9;
-  color: #11633a;
-}
-
-.pilot-ready-badge.is-ready > span {
-  background: #14804a;
-  box-shadow: 0 0 0 5px rgba(20, 128, 74, 0.13);
-}
-
 .pilot-layout {
   display: grid;
   gap: 18px;
@@ -2317,35 +2286,6 @@ h1 {
   padding: 14px 18px;
 }
 
-.flight-mode {
-  background: #eff3f8;
-  border: 1px solid #d6dfe9;
-  border-radius: 999px;
-  color: #53647a;
-  font-size: 12px;
-  padding: 8px 12px;
-}
-
-.flight-mode.phase-start,
-.flight-mode.phase-takeoff,
-.flight-mode.phase-flight {
-  background: #eaf8f0;
-  border-color: #b6e1c9;
-  color: #11633a;
-}
-
-.flight-mode.phase-landing {
-  background: #fff7eb;
-  border-color: #f2d5ad;
-  color: #9b570d;
-}
-
-.flight-mode.phase-emergency {
-  background: #fff0ef;
-  border-color: #f4c6c2;
-  color: #b1322b;
-}
-
 .drone-stage {
   background:
     linear-gradient(rgba(72, 126, 171, 0.08) 1px, transparent 1px),
@@ -2538,13 +2478,6 @@ h1 {
   background: #eef4ff;
   border-color: #b9cbf5;
   color: #244fae;
-}
-
-.flight-action-bar button.is-emergency {
-  background: #fff0ef;
-  border-color: #edaaa5;
-  color: #b1322b;
-  font-weight: 800;
 }
 
 .student-flight-actions {
@@ -2935,6 +2868,57 @@ h1 {
   padding: 0 18px 12px;
 }
 
+.class-setup-details {
+  background: #fff;
+  border: 1px solid #dce5f0;
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+.class-setup-details > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.class-setup-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.class-setup-details > summary::after {
+  color: #275ee7;
+  content: "+";
+  font-size: 22px;
+  font-weight: 500;
+  margin-left: 12px;
+}
+
+.class-setup-details[open] > summary::after {
+  content: "−";
+}
+
+.class-setup-details > summary span {
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.class-setup-details > summary small {
+  color: #617088;
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.class-setup-details__body {
+  border-top: 1px solid #dce5f0;
+  display: grid;
+  gap: 14px;
+  padding: 14px 12px;
+}
+
 .developer-details {
   background: var(--background);
   border: 1px solid #cad5e2;
@@ -3146,11 +3130,6 @@ h1 {
     gap: 12px;
   }
 
-  .pilot-ready-badge {
-    justify-content: center;
-    width: 100%;
-  }
-
   .pilot-brand span:not(.pilot-brand-mark) {
     display: none;
   }
@@ -3158,15 +3137,6 @@ h1 {
   .pilot-brand-mark {
     height: 42px;
     width: 42px;
-  }
-
-  .pilot-ready-badge {
-    min-height: 38px;
-    padding: 7px 10px;
-  }
-
-  .pilot-ready-badge strong {
-    font-size: 11px;
   }
 
   .simple-connection-actions,
@@ -3180,11 +3150,6 @@ h1 {
 
   .screen-control-note {
     text-align: center;
-  }
-
-  .flight-action-bar .is-emergency {
-    grid-column: 1 / -1;
-    min-height: 50px;
   }
 
   .flight-settings-grid,

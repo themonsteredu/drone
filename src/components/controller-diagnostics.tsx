@@ -1189,13 +1189,6 @@ export function ControllerDiagnosticsPage() {
     serialSnapshot?.isOpen || selectedGamepad,
   );
   const serialConnected = Boolean(serialSnapshot?.isOpen);
-  const simpleStatusLabel = ready
-    ? "조종 준비 완료"
-    : simpleConnected && inputActive && !mappingComplete
-      ? "조종 설정 필요"
-      : simpleConnected
-        ? "입력 확인 중"
-        : "연결 필요";
   const simpleNotice = ready
     ? activeMethod !== "serial" || centerCalibration.status === "complete"
       ? "조종 준비 완료. 양쪽 스틱을 아래쪽 안으로 모아 시동을 걸어 주세요."
@@ -1359,10 +1352,8 @@ export function ControllerDiagnosticsPage() {
             <h1>미래항공모빌리티 운항 훈련</h1>
           </div>
         </div>
-        <div className={ready ? "pilot-ready-badge is-ready" : "pilot-ready-badge"}>
-          <span aria-hidden="true" />
-          <strong>{simpleStatusLabel}</strong>
-        </div>
+        {/* Readiness is owned by ControllerStatusPanel, which states the same
+            value together with the action needed to clear it. */}
       </header>
 
       <section className="pilot-layout" aria-label="가상 드론 조종 화면">

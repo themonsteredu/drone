@@ -45,9 +45,13 @@ export const UNVERIFIED_DEFAULT_OPERATIONS: DefaultControllerOperationGestures =
 
 /**
  * Verified 0x71 raw order: LX, LY, RX, RY. The semantic assignment retains the
- * tested throttle/pitch signs, flips right-X -> roll so a right stick command
- * moves toward the aircraft's right-hand side, and applies the later hardware
- * correction for left-X -> yaw so stick-right means clockwise/right yaw.
+ * tested throttle/pitch signs and flips only right-X -> roll so a right stick
+ * command moves toward the aircraft's right-hand side.
+ *
+ * left-X -> yaw is deliberately NOT inverted. It was inverted once, which made
+ * a stick-right command rotate counter-clockwise and left the Mode 2 start
+ * gesture unreachable: that gesture requires semantic yaw >= +threshold, so an
+ * inverted left-X can never satisfy it at any threshold.
  */
 export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
   Object.freeze({
@@ -64,7 +68,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 0,
         physicalAxis: "left-x",
         control: "yaw",
-        inverted: true,
+        inverted: false,
       }),
       Object.freeze({
         rawAxisIndex: 1,
@@ -95,7 +99,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
       status: "verified",
       scope: "protocol-and-hardware",
       summary:
-        "The official joystick structure supplies left/right X/Y in an 8-byte payload; the semantic signs include locally hardware-tested yaw and roll corrections while throttle and pitch retain their established signs.",
+        "The official joystick structure supplies left/right X/Y in an 8-byte payload; the semantic signs apply the locally hardware-tested right-X -> roll correction while throttle, yaw and pitch retain their established signs.",
       sourceUrls: Object.freeze([OFFICIAL_BYROBOT_JOYSTICK_STRUCT_URL]),
     }),
   });

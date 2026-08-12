@@ -5,12 +5,12 @@
 .missionSelection,
 .resultScreen,
 .teacherControls {
-  --experience-ink: #17243b;
-  --experience-muted: #617088;
-  --experience-line: #dce5f0;
-  --experience-blue: #275ee7;
-  --experience-blue-dark: #1846ba;
-  --experience-sky: #eaf2ff;
+  --experience-ink: #13213a;
+  --experience-muted: #65748a;
+  --experience-line: #d9e4f0;
+  --experience-blue: #176bff;
+  --experience-blue-dark: #0b47b7;
+  --experience-sky: #e9f3ff;
   --experience-green: #138453;
   --experience-green-soft: #e9f8f0;
   --experience-orange: #bd6511;
@@ -23,10 +23,12 @@
 
 .statusHud {
   align-items: center;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid var(--experience-line);
+  background:
+    radial-gradient(circle at 78% -20%, rgba(69, 172, 255, 0.3), transparent 36%),
+    linear-gradient(125deg, #102544 0%, #153660 58%, #0f294b 100%);
+  border: 1px solid rgba(151, 196, 238, 0.28);
   border-radius: 20px;
-  box-shadow: 0 12px 36px rgba(40, 65, 103, 0.1);
+  box-shadow: 0 18px 42px rgba(13, 38, 70, 0.18);
   display: flex;
   gap: 28px;
   justify-content: space-between;
@@ -43,17 +45,18 @@
 
 .statusBrand > span {
   align-items: center;
-  background: var(--experience-blue);
+  background: linear-gradient(145deg, #2f8cff, #1764eb);
   border-radius: 12px;
   color: #fff;
   display: flex;
   flex: 0 0 auto;
   font-size: 13px;
   font-weight: 900;
-  height: 44px;
+  box-shadow: 0 9px 24px rgba(25, 111, 255, 0.35);
+  height: 46px;
   justify-content: center;
   letter-spacing: 0.04em;
-  width: 44px;
+  width: 46px;
 }
 
 .statusBrand p,
@@ -62,7 +65,7 @@
 }
 
 .statusBrand p {
-  color: var(--experience-muted);
+  color: #a9c4e2;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -70,6 +73,7 @@
 }
 
 .statusBrand h2 {
+  color: #fff;
   font-size: clamp(18px, 2.2vw, 27px);
   letter-spacing: -0.04em;
   line-height: 1.15;
@@ -84,15 +88,15 @@
 }
 
 .statusSummary > div {
-  background: #f6f8fb;
-  border: 1px solid #e7ecf3;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(207, 228, 248, 0.16);
   border-radius: 11px;
   min-width: 0;
   padding: 8px 10px;
 }
 
 .statusSummary dt {
-  color: var(--experience-muted);
+  color: #a9c1dc;
   font-size: 10px;
   font-weight: 700;
   margin-bottom: 3px;
@@ -100,6 +104,7 @@
 
 .statusSummary dd {
   align-items: center;
+  color: #f7fbff;
   display: flex;
   font-size: 13px;
   font-weight: 850;
@@ -117,7 +122,7 @@
 }
 
 .statusSummary dd small {
-  color: var(--experience-muted);
+  color: #aec4dc;
   font-size: 9px;
   font-weight: 600;
   max-width: 84px;
@@ -127,16 +132,16 @@
 }
 
 .statusSummary .connected {
-  color: var(--experience-green);
+  color: #73e2ad;
 }
 
 .statusSummary .connected i {
-  background: var(--experience-green);
-  box-shadow: 0 0 0 4px rgba(19, 132, 83, 0.12);
+  background: #43d994;
+  box-shadow: 0 0 0 4px rgba(67, 217, 148, 0.15);
 }
 
 .statusSummary .connecting {
-  color: var(--experience-orange);
+  color: #ffc47c;
 }
 
 .statusSummary .connecting i {
@@ -145,14 +150,14 @@
 }
 
 .statusSummary .missing {
-  color: #7c5160;
+  color: #ffc0c0;
 }
 
 .experienceNavigation {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--experience-line);
   border-radius: 16px;
-  box-shadow: 0 8px 26px rgba(40, 65, 103, 0.07);
+  box-shadow: 0 8px 26px rgba(40, 65, 103, 0.05);
   overflow: hidden;
 }
 
@@ -170,7 +175,7 @@
   display: flex;
   gap: 9px;
   min-width: 0;
-  padding: 11px;
+  padding: 12px 11px;
   position: relative;
 }
 
@@ -212,7 +217,7 @@
 }
 
 .experienceNavigation .navigationCurrent {
-  background: var(--experience-sky);
+  background: linear-gradient(180deg, #f3f8ff, var(--experience-sky));
 }
 
 .experienceNavigation .navigationCurrent::after {
@@ -240,7 +245,10 @@
 
 .guideOverlay {
   align-items: center;
-  background: rgba(18, 31, 53, 0.42);
+  backdrop-filter: blur(5px);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(37, 121, 229, 0.08), transparent 36%),
+    rgba(12, 29, 52, 0.5);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -251,10 +259,11 @@
 }
 
 .guidePanel {
-  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.85);
-  border-radius: 24px;
-  box-shadow: 0 26px 70px rgba(17, 36, 70, 0.24);
+  border-radius: 28px;
+  box-shadow: 0 32px 80px rgba(8, 29, 59, 0.3);
   max-width: 540px;
   padding: clamp(24px, 4vw, 38px);
   text-align: center;
@@ -436,17 +445,17 @@
 .missionCard button,
 .feedbackToast button,
 .teacherControls button {
-  border-radius: 11px;
+  border-radius: 12px;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 800;
-  min-height: 46px;
+  min-height: 48px;
   padding: 10px 17px;
 }
 
 .primaryButton {
-  background: var(--experience-blue);
+  background: linear-gradient(135deg, #2478ff, #1458db);
   border: 1px solid var(--experience-blue);
   color: #fff;
 }
@@ -481,7 +490,7 @@
 
 .trainingHud {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: minmax(440px, 1.4fr) minmax(230px, 0.8fr);
   pointer-events: none;
 }
@@ -490,14 +499,14 @@
 .objectivePanel,
 .hudWarning {
   backdrop-filter: blur(12px);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(209, 221, 235, 0.95);
-  box-shadow: 0 8px 24px rgba(39, 63, 95, 0.1);
+  background: rgba(251, 253, 255, 0.94);
+  border: 1px solid rgba(198, 216, 235, 0.95);
+  box-shadow: 0 10px 28px rgba(26, 59, 98, 0.1);
 }
 
 .telemetryRow {
-  border-radius: 14px;
-  padding: 10px;
+  border-radius: 16px;
+  padding: 11px;
 }
 
 .telemetryRow dl {
@@ -545,7 +554,7 @@
 }
 
 .objectivePanel {
-  border-radius: 14px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -583,7 +592,9 @@
 
 .missionSelection,
 .resultScreen {
-  background: #f8fbff;
+  background:
+    radial-gradient(circle at 100% 0, rgba(39, 114, 231, 0.09), transparent 32%),
+    #f8fbff;
   border: 1px solid var(--experience-line);
   border-radius: 24px;
   box-shadow: 0 18px 50px rgba(37, 62, 98, 0.1);
@@ -649,6 +660,16 @@
   overflow: hidden;
   padding: 24px;
   position: relative;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.missionCard:hover {
+  border-color: #b8ccec;
+  box-shadow: 0 16px 35px rgba(30, 65, 112, 0.12);
+  transform: translateY(-2px);
 }
 
 .missionCard::before {

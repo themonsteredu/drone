@@ -3206,3 +3206,411 @@ h1 {
     gap: 5px;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Aviation classroom refresh — presentation only, flight/input logic stays  */
+/* in the controller, simulator, and experience modules.                     */
+/* -------------------------------------------------------------------------- */
+
+.controller-app {
+  --pilot-navy: #102746;
+  --pilot-blue: #176bff;
+  --pilot-blue-dark: #0d49ba;
+  --pilot-cyan: #38bdf8;
+  --pilot-surface: rgba(255, 255, 255, 0.94);
+  --pilot-border: rgba(169, 193, 220, 0.56);
+  background:
+    radial-gradient(circle at 8% 4%, rgba(56, 189, 248, 0.12), transparent 22rem),
+    radial-gradient(circle at 92% 10%, rgba(23, 107, 255, 0.09), transparent 27rem),
+    linear-gradient(180deg, #f4f8fd 0%, #edf4fb 50%, #f6f9fc 100%);
+  max-width: none;
+  min-height: 100vh;
+  padding: 0 clamp(16px, 2.4vw, 42px) 38px;
+}
+
+.pilot-header {
+  backdrop-filter: blur(20px);
+  background: rgba(244, 248, 253, 0.86);
+  border-bottom-color: rgba(171, 194, 218, 0.58);
+  min-height: 86px;
+  padding-block: 14px;
+}
+
+.pilot-header::after {
+  background: linear-gradient(90deg, var(--pilot-blue), var(--pilot-cyan), transparent);
+  bottom: -1px;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  width: min(360px, 34vw);
+}
+
+.pilot-brand {
+  gap: 13px;
+}
+
+.pilot-brand-mark {
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.28), transparent 34%),
+    linear-gradient(145deg, #2385ff, #174fc5);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(20, 83, 186, 0.24);
+  height: 50px;
+  position: relative;
+  width: 50px;
+}
+
+.pilot-brand-mark::after {
+  border: 1px solid rgba(61, 139, 255, 0.25);
+  border-radius: 20px;
+  content: "";
+  inset: -5px;
+  position: absolute;
+}
+
+.pilot-brand h1 {
+  color: #10213a;
+  font-size: clamp(24px, 2.6vw, 36px);
+  letter-spacing: -0.045em;
+}
+
+.pilot-layout {
+  align-items: start;
+  gap: clamp(14px, 1.3vw, 22px);
+  grid-template-columns: 248px minmax(620px, 1fr) 280px;
+  margin: 0 auto;
+  max-width: 1740px;
+  padding-top: 22px;
+}
+
+.pilot-card {
+  background: var(--pilot-surface);
+  border-color: var(--pilot-border);
+  border-radius: 24px;
+  box-shadow:
+    0 22px 55px rgba(29, 66, 108, 0.08),
+    0 2px 8px rgba(29, 66, 108, 0.04);
+}
+
+.controller-status-card,
+.stick-input-card {
+  position: sticky;
+  top: 108px;
+}
+
+.pilot-card-heading {
+  background: linear-gradient(180deg, #fff, #f8fbfe);
+  border-bottom-color: #e1eaf3;
+  padding: 18px;
+}
+
+.pilot-card-heading h2,
+.simulator-heading h2,
+.button-mapping-heading h3 {
+  color: #13243c;
+  font-size: 19px;
+}
+
+.simple-status-list {
+  gap: 8px;
+  padding: 15px 16px 10px;
+}
+
+.simple-status-row {
+  background: #f5f8fc;
+  border-color: transparent;
+  border-radius: 13px;
+  min-height: 48px;
+  padding: 10px 11px;
+}
+
+.simple-status-row.is-ok {
+  background: linear-gradient(90deg, #e9f8f1, #f4fbf7);
+  border-color: #c5e8d5;
+}
+
+.simple-ready-state {
+  border-radius: 16px;
+  margin: 5px 16px 14px;
+  padding: 15px;
+}
+
+.simple-ready-state.is-ready {
+  background: linear-gradient(135deg, #e4f8ed, #f2fbf6);
+  box-shadow: inset 4px 0 #1b9a60;
+}
+
+.simple-connection-actions {
+  padding-inline: 16px;
+}
+
+.simple-connection-actions button.is-primary {
+  background: linear-gradient(135deg, #247bff, #1556d2);
+  border: 0;
+  border-radius: 13px;
+  box-shadow: 0 10px 22px rgba(23, 100, 224, 0.22);
+  color: #fff;
+  font-weight: 850;
+}
+
+.simple-connection-actions button.is-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #176bff, #0d49ba);
+  color: #fff;
+}
+
+.simple-help {
+  color: #6b7b90;
+  line-height: 1.6;
+}
+
+.simulator-card {
+  border-color: rgba(122, 158, 195, 0.62);
+  box-shadow:
+    0 28px 70px rgba(20, 55, 98, 0.13),
+    0 3px 10px rgba(20, 55, 98, 0.05);
+  overflow: hidden;
+}
+
+.simulator-card > header {
+  border-radius: 0;
+  padding: 16px 18px;
+}
+
+.simulator-card > nav {
+  border-color: #d6e2ee;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.experience-simulator-heading {
+  background: linear-gradient(180deg, #fbfdff, #f3f8fd);
+  min-height: 66px;
+  padding-inline: 20px;
+}
+
+.drone-stage,
+.drone-stage canvas {
+  height: clamp(480px, 52vh, 620px);
+  min-height: 480px;
+}
+
+.drone-stage {
+  border-block: 1px solid rgba(135, 169, 202, 0.28);
+  isolation: isolate;
+}
+
+.drone-stage::after {
+  background: linear-gradient(180deg, rgba(16, 39, 70, 0.08), transparent 18%, transparent 78%, rgba(16, 39, 70, 0.08));
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.flight-telemetry {
+  bottom: 14px;
+  gap: 7px;
+  left: 14px;
+}
+
+.flight-telemetry span {
+  backdrop-filter: blur(12px);
+  background: rgba(13, 36, 65, 0.82);
+  border-color: rgba(176, 211, 242, 0.24);
+  border-radius: 10px;
+  color: #b8cee3;
+  font-size: 10px;
+  padding: 8px 10px;
+}
+
+.flight-telemetry strong {
+  color: #fff;
+}
+
+.flight-emergency-overlay {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 245, 244, 0.92) !important;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(150, 42, 35, 0.12);
+}
+
+.flight-action-bar {
+  background: #f8fbfe;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 15px 17px;
+}
+
+.flight-action-bar button {
+  background: #fff;
+  border-color: #cad8e7;
+  border-radius: 12px;
+  color: #31465f;
+  min-height: 48px;
+}
+
+.flight-action-bar button.is-start {
+  background: #eaf2ff;
+  border-color: #a9c4f1;
+  color: #174da9;
+}
+
+.flight-action-bar button.is-takeoff:not(:disabled) {
+  background: linear-gradient(135deg, #247bff, #1556d2);
+  border-color: transparent;
+  box-shadow: 0 9px 20px rgba(23, 100, 224, 0.2);
+  color: #fff;
+}
+
+.screen-control-note {
+  background: #edf4fb;
+  border-radius: 11px;
+  padding: 10px 12px;
+}
+
+.simple-stick-group {
+  padding: 16px 18px;
+}
+
+.simple-stick-track {
+  background: linear-gradient(90deg, #dfe8f2, #edf2f7 50%, #dfe8f2);
+  height: 9px;
+}
+
+.simple-stick-marker {
+  background: linear-gradient(145deg, #3a96ff, #1761df);
+  box-shadow: 0 3px 10px rgba(23, 97, 223, 0.36);
+}
+
+.recent-button {
+  background: linear-gradient(135deg, #e9f2ff, #f4f8ff);
+  border-color: #c8dbf8;
+  margin-inline: 18px;
+}
+
+.class-setup-details,
+.developer-details {
+  border-color: rgba(169, 193, 220, 0.62);
+  box-shadow: 0 10px 28px rgba(29, 66, 108, 0.05);
+}
+
+.class-setup-details > summary,
+.developer-details > summary {
+  background: linear-gradient(180deg, #fff, #f8fbfe);
+}
+
+.pilot-footer {
+  color: #76869a;
+  margin-inline: auto;
+  max-width: 1740px;
+}
+
+@media (max-width: 1320px) {
+  .pilot-layout {
+    grid-template-columns: 238px minmax(560px, 1fr);
+  }
+
+  .stick-input-card {
+    position: static;
+  }
+}
+
+@media (max-width: 860px) {
+  .controller-app {
+    padding-inline: 14px;
+  }
+
+  .pilot-header::after {
+    width: 55vw;
+  }
+
+  .pilot-layout {
+    gap: 13px;
+    grid-template-columns: 1fr;
+    padding-top: 14px;
+  }
+
+  .controller-status-card,
+  .stick-input-card {
+    position: static;
+  }
+
+  .simulator-card {
+    box-shadow: 0 18px 45px rgba(20, 55, 98, 0.11);
+  }
+
+  .drone-stage,
+  .drone-stage canvas {
+    height: min(520px, 56svh);
+    min-height: 410px;
+  }
+}
+
+@media (max-width: 560px) {
+  .controller-app {
+    padding-inline: 8px;
+  }
+
+  .pilot-header {
+    min-height: 68px;
+    padding: 10px 3px;
+  }
+
+  .pilot-brand {
+    gap: 10px;
+  }
+
+  .pilot-brand h1 {
+    font-size: 19px;
+    line-height: 1.15;
+  }
+
+  .pilot-brand-mark {
+    border-radius: 12px;
+    height: 38px;
+    width: 38px;
+  }
+
+  .pilot-card {
+    border-radius: 18px;
+  }
+
+  .controller-status-card .simple-status-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .controller-status-card .simple-status-row {
+    min-height: 68px;
+  }
+
+  .simulator-card > header {
+    padding: 12px;
+  }
+
+  .experience-simulator-heading {
+    min-height: 61px;
+    padding-inline: 14px;
+  }
+
+  .experience-simulator-heading h2 {
+    font-size: 18px;
+  }
+
+  .drone-stage,
+  .drone-stage canvas {
+    height: 46svh;
+    min-height: 360px;
+  }
+
+  .flight-action-bar {
+    grid-template-columns: 1fr 1fr;
+    padding: 12px;
+  }
+
+  .screen-control-note {
+    padding: 9px;
+  }
+}

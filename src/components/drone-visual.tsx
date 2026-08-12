@@ -41,11 +41,31 @@ function drawDroneScene(
   context.clearRect(0, 0, w, h);
 
   const sky = context.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#eaf5ff");
-  sky.addColorStop(0.58, "#f8fbff");
-  sky.addColorStop(1, "#e3edf4");
+  sky.addColorStop(0, "#cfe8ff");
+  sky.addColorStop(0.5, "#f4f9ff");
+  sky.addColorStop(1, "#dce9f3");
   context.fillStyle = sky;
   context.fillRect(0, 0, w, h);
+
+  const sunlight = context.createRadialGradient(
+    w * 0.78,
+    h * 0.13,
+    0,
+    w * 0.78,
+    h * 0.13,
+    Math.max(w, h) * 0.38,
+  );
+  sunlight.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+  sunlight.addColorStop(0.2, "rgba(214, 239, 255, 0.42)");
+  sunlight.addColorStop(1, "rgba(214, 239, 255, 0)");
+  context.fillStyle = sunlight;
+  context.fillRect(0, 0, w, h);
+
+  context.strokeStyle = "rgba(81, 132, 174, 0.18)";
+  context.beginPath();
+  context.moveTo(0, h * 0.5);
+  context.lineTo(w, h * 0.5);
+  context.stroke();
 
   const { position, rotation, tilt, rotorSpeed } = transform;
   const scale = Math.max(22, Math.min(42, w / 20));
@@ -58,8 +78,8 @@ function drawDroneScene(
   for (let index = -8; index <= 8; index += 1) {
     const major = index % 4 === 0;
     context.strokeStyle = major
-      ? "rgba(70, 122, 162, 0.23)"
-      : "rgba(70, 122, 162, 0.11)";
+      ? "rgba(53, 111, 157, 0.28)"
+      : "rgba(70, 122, 162, 0.12)";
     context.beginPath();
     let point = projectPoint(
       index - cameraX,

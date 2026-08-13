@@ -65,7 +65,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
       volume: {
         shape: "box",
         min: { x: -6, y: 0, z: 6 },
-        max: { x: -2.8, y: 2.8, z: 10 },
+        max: { x: -2.8, y: 6.5, z: 10 },
       },
     },
     {
@@ -74,7 +74,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
       volume: {
         shape: "box",
         min: { x: 6, y: 0, z: 10 },
-        max: { x: 10.5, y: 3.4, z: 15 },
+        max: { x: 10.5, y: 7.5, z: 15 },
       },
     },
     {
@@ -83,7 +83,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
       volume: {
         shape: "box",
         min: { x: -1, y: 0, z: 18 },
-        max: { x: 3.5, y: 2.4, z: 22 },
+        max: { x: 3.5, y: 6, z: 22 },
       },
     },
   ],
@@ -134,7 +134,7 @@ export const DISASTER_SEARCH_MISSION: MissionDefinition = {
       volume: {
         shape: "box",
         min: { x: -2.5, y: 0, z: 5 },
-        max: { x: 1, y: 1.6, z: 8.5 },
+        max: { x: 1, y: 4.5, z: 8.5 },
       },
     },
     {
@@ -143,7 +143,7 @@ export const DISASTER_SEARCH_MISSION: MissionDefinition = {
       volume: {
         shape: "box",
         min: { x: 2, y: 0, z: 16 },
-        max: { x: 5.5, y: 2.2, z: 19 },
+        max: { x: 5.5, y: 5.5, z: 19 },
       },
     },
   ],

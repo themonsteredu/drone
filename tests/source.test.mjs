@@ -67,7 +67,8 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(simulator, /BUTTON_MAPPING_STORAGE_KEY/);
   assert.match(simulator, /controllerState\.buttonTransitions/);
   assert.doesNotMatch(simulator, /diagnostics\/button-event-journal/);
-  assert.match(flightController, /INPUT_STALE_AFTER_MS = 500/);
+  assert.match(flightController, /INPUT_STALE_AFTER_MS = 800/);
+  assert.match(component, /startInputRequestPolling\(150\)/);
   assert.match(flightController, /ControllerState/);
   assert.match(visual, /DroneTransform/);
   assert.match(settings, /바이로봇 기본 조종/);

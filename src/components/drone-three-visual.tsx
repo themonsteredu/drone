@@ -293,65 +293,142 @@ function addHillsAndTrees(
   treeCount: number,
   shadows: boolean,
 ): void {
-  const hillMaterials = [
-    meshMaterial(0x6f956c, 1, 0),
-    meshMaterial(0x7fa277, 1, 0),
-  ];
-  const hillPositions = [
-    [-38, 3.2, 78, 25, 7, 18],
-    [-6, 2.8, 88, 29, 6, 20],
-    [31, 3.4, 80, 26, 7, 19],
-    [-61, 2.2, 96, 30, 5.5, 17],
-    [61, 2.5, 96, 31, 6, 18],
-  ] as const;
-  for (const [index, [x, y, z, sx, sy, sz]] of hillPositions.entries()) {
-    const hill = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 12, 7),
-      hillMaterials[index % hillMaterials.length],
+  const addRidge = (
+    z: number,
+    peaks: readonly (readonly [number, number])[],
+    color: number,
+  ) => {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (const [x, y] of peaks) {
+      positions.push(x, y, z, x, -2, z);
+    }
+    for (let index = 0; index < peaks.length - 1; index += 1) {
+      const top = index * 2;
+      const bottom = top + 1;
+      const nextTop = top + 2;
+      const nextBottom = top + 3;
+      indices.push(top, bottom, nextTop, bottom, nextBottom, nextTop);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(positions, 3),
     );
-    hill.position.set(x, y - sy * 0.48, z);
-    hill.scale.set(sx, sy, sz);
-    hill.receiveShadow = true;
-    scene.add(hill);
-  }
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const ridge = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        fog: true,
+      }),
+    );
+    ridge.receiveShadow = shadows;
+    scene.add(ridge);
+  };
 
-  const trunkGeometry = new THREE.CylinderGeometry(0.12, 0.18, 1.1, 6);
-  const crownGeometry = new THREE.ConeGeometry(0.72, 2.2, 7);
-  const trunkMaterial = meshMaterial(0x72533d, 1, 0);
-  const crownMaterial = meshMaterial(0x3f7651, 0.95, 0);
+  // Two lightweight irregular silhouettes replace the stretched sphere hills.
+  // They keep a calm horizon while using only a few triangles and draw calls.
+  addRidge(
+    112,
+    [
+      [-78, 4.2],
+      [-64, 7.1],
+      [-50, 5.8],
+      [-34, 8.4],
+      [-19, 6.1],
+      [-3, 9.2],
+      [14, 6.4],
+      [31, 8.7],
+      [47, 5.7],
+      [63, 7.6],
+      [78, 4.4],
+    ],
+    0xa3b8a0,
+  );
+  addRidge(
+    91,
+    [
+      [-78, 2.2],
+      [-65, 4.8],
+      [-51, 3.7],
+      [-38, 6.3],
+      [-23, 4.5],
+      [-8, 5.8],
+      [8, 3.6],
+      [24, 6.5],
+      [41, 4.2],
+      [57, 5.5],
+      [78, 2.3],
+    ],
+    0x759670,
+  );
+
+  const trunkGeometry = new THREE.CylinderGeometry(0.11, 0.18, 1.15, 7);
+  const lowerCrownGeometry = new THREE.DodecahedronGeometry(0.78, 0);
+  const upperCrownGeometry = new THREE.DodecahedronGeometry(0.62, 0);
+  const trunkMaterial = meshMaterial(0x6f5038, 1, 0);
+  const crownMaterial = meshMaterial(0x3e7551, 0.98, 0);
   const trunks = new THREE.InstancedMesh(
     trunkGeometry,
     trunkMaterial,
     treeCount,
   );
-  const crowns = new THREE.InstancedMesh(
-    crownGeometry,
+  const lowerCrowns = new THREE.InstancedMesh(
+    lowerCrownGeometry,
+    crownMaterial,
+    treeCount,
+  );
+  const upperCrowns = new THREE.InstancedMesh(
+    upperCrownGeometry,
     crownMaterial,
     treeCount,
   );
   const transform = new THREE.Matrix4();
+  const rotation = new THREE.Quaternion();
+  const treeColors = [0x356a48, 0x447d55, 0x527f50] as const;
   for (let index = 0; index < treeCount; index += 1) {
     const side = index % 2 === 0 ? -1 : 1;
     const row = Math.floor(index / 2);
-    const x = side * (20 + ((row * 13) % 24));
-    const z = 1 + ((row * 17) % 74);
-    const scale = 0.78 + (row % 4) * 0.08;
+    const x = side * (19 + ((row * 11 + (index % 3) * 3) % 24));
+    const z = 3 + ((row * 13 + (index % 4) * 5) % 76);
+    const scale = 0.78 + (row % 5) * 0.1;
+    rotation.setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      (row % 7) * 0.31,
+    );
     transform.compose(
-      new THREE.Vector3(x, 0.48 * scale, z),
-      new THREE.Quaternion(),
+      new THREE.Vector3(x, 0.52 * scale, z),
+      rotation,
       new THREE.Vector3(scale, scale, scale),
     );
     trunks.setMatrixAt(index, transform);
     transform.compose(
-      new THREE.Vector3(x, 1.8 * scale, z),
-      new THREE.Quaternion(),
-      new THREE.Vector3(scale, scale, scale),
+      new THREE.Vector3(x, 1.48 * scale, z),
+      rotation,
+      new THREE.Vector3(scale * 1.02, scale * 1.2, scale * 0.92),
     );
-    crowns.setMatrixAt(index, transform);
+    lowerCrowns.setMatrixAt(index, transform);
+    transform.compose(
+      new THREE.Vector3(x + 0.08 * side, 2.24 * scale, z),
+      rotation,
+      new THREE.Vector3(scale * 0.82, scale, scale * 0.78),
+    );
+    upperCrowns.setMatrixAt(index, transform);
+    const color = new THREE.Color(treeColors[row % treeColors.length]);
+    lowerCrowns.setColorAt(index, color);
+    upperCrowns.setColorAt(index, color.clone().offsetHSL(0, 0, 0.035));
   }
+  if (lowerCrowns.instanceColor) lowerCrowns.instanceColor.needsUpdate = true;
+  if (upperCrowns.instanceColor) upperCrowns.instanceColor.needsUpdate = true;
   trunks.castShadow = shadows;
-  crowns.castShadow = shadows;
-  scene.add(trunks, crowns);
+  lowerCrowns.castShadow = shadows;
+  upperCrowns.castShadow = shadows;
+  scene.add(trunks, lowerCrowns, upperCrowns);
 }
 
 function addSkyDetails(scene: THREE.Scene): void {

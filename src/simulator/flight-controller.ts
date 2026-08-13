@@ -21,7 +21,9 @@ import {
   type Mode2GestureSnapshot,
 } from "./mode2-gesture-detector";
 
-export const INPUT_STALE_AFTER_MS = 500;
+// Serial polling requests Joystick and Button in turn. 800 ms tolerates one
+// delayed response without allowing an old held position to complete arming.
+export const INPUT_STALE_AFTER_MS = 800;
 
 const ZERO_INPUT: Readonly<FlightControlInput> = {
   throttle: 0,

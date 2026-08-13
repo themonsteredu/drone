@@ -81,6 +81,9 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 2,
         physicalAxis: "right-x",
         control: "roll",
+        // Locked after physical-controller verification: right stick right
+        // must move the aircraft right. Do not change without a new hardware
+        // polarity test for this exact codec/profile.
         inverted: true,
       }),
       Object.freeze({

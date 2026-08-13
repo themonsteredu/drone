@@ -183,8 +183,8 @@ test("box obstacles expose exact above-ground dimensions to the 3D scene", () =>
   const marker = coordinator
     .getSnapshot()
     .scene.markers.find((candidate) => candidate.id === "medical-building-1");
-  assert.deepEqual(marker?.position, { x: -4.4, y: 1.4, z: 8 });
-  assert.deepEqual(marker?.size, { x: 3.2, y: 2.8, z: 4 });
+  assert.deepEqual(marker?.position, { x: -4.4, y: 3.25, z: 8 });
+  assert.deepEqual(marker?.size, { x: 3.2, y: 6.5, z: 4 });
   assert.equal(marker.position.y - marker.size.y / 2, 0);
 });
 

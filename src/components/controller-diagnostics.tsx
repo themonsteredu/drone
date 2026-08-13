@@ -735,6 +735,10 @@ export function ControllerDiagnosticsPage() {
         // removes extra student-facing clicks without changing packet parsing.
         await adapter.sendInputActivationPing().catch(() => undefined);
         await adapter.requestControllerInputOnce().catch(() => undefined);
+        // Some LINK-mode controllers only send 0x71/0x70 after a Request.
+        // Poll below the stale-input window so a real three-second held
+        // Mode 2 corner cannot be interrupted between serial packets.
+        adapter.startInputRequestPolling(150);
       } catch (error) {
         hasSerialSelectionRef.current = false;
         setAutomaticConnectionStatus("error");

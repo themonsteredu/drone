@@ -25,8 +25,10 @@ export interface Mode2GestureBindings {
 
 export interface Mode2GestureConfig {
   armingHoldMs: number;
-  /** Required magnitude for each of the four inward/down semantic axes. */
-  armingAxisThreshold: number;
+  /** Required magnitude for the two downward (vertical) stick axes. */
+  armingDownThreshold: number;
+  /** Required magnitude for the two inward (horizontal) stick axes. */
+  armingInwardThreshold: number;
   /** Brief packet/analog jitter tolerated without losing the whole hold. */
   armingReleaseGraceMs: number;
   /** Throttle must be this low while the bound L button is held. */
@@ -50,11 +52,12 @@ export const DEFAULT_MODE2_GESTURE_BINDINGS: Readonly<Mode2GestureBindings> =
 export const DEFAULT_MODE2_GESTURE_CONFIG: Readonly<Mode2GestureConfig> =
   Object.freeze({
     armingHoldMs: 3000,
-    // Four simultaneous axes for three seconds is already a deliberate
-    // gesture. 0.58 also works with BYROBOT X axes whose observed endpoint is
-    // around 0.65 instead of forcing an unreachable 0.70 corner.
-    armingAxisThreshold: 0.58,
-    armingReleaseGraceMs: 180,
+    // A diagonal stick does not report the same magnitude on both axes on
+    // every BYROBOT controller. Keep the vertical threshold deliberate while
+    // allowing the shorter horizontal travel observed on real hardware.
+    armingDownThreshold: 0.52,
+    armingInwardThreshold: 0.42,
+    armingReleaseGraceMs: 300,
     emergencyThrottleThreshold: -0.75,
   });
 
@@ -86,13 +89,18 @@ export function resolveMode2GestureConfig(
   const merged = { ...DEFAULT_MODE2_GESTURE_CONFIG, ...overrides };
   return {
     armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 3000)),
-    armingAxisThreshold: clamp(
-      Math.abs(finiteOr(merged.armingAxisThreshold, 0.58)),
+    armingDownThreshold: clamp(
+      Math.abs(finiteOr(merged.armingDownThreshold, 0.52)),
+      0.2,
+      1,
+    ),
+    armingInwardThreshold: clamp(
+      Math.abs(finiteOr(merged.armingInwardThreshold, 0.42)),
       0.2,
       1,
     ),
     armingReleaseGraceMs: clamp(
-      finiteOr(merged.armingReleaseGraceMs, 180),
+      finiteOr(merged.armingReleaseGraceMs, 300),
       0,
       500,
     ),
@@ -115,12 +123,12 @@ export function isMode2ArmingGestureActive(
   settings: Partial<Mode2GestureConfig> = {},
 ): boolean {
   if (!normalizedMappedState(state)) return false;
-  const threshold = resolveMode2GestureConfig(settings).armingAxisThreshold;
+  const config = resolveMode2GestureConfig(settings);
   return (
-    state.throttle <= -threshold &&
-    state.yaw >= threshold &&
-    state.pitch <= -threshold &&
-    state.roll >= threshold
+    state.throttle <= -config.armingDownThreshold &&
+    state.yaw >= config.armingInwardThreshold &&
+    state.pitch <= -config.armingDownThreshold &&
+    state.roll >= config.armingInwardThreshold
   );
 }
 

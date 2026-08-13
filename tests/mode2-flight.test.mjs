@@ -135,23 +135,23 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
   }
 });
 
-test("Mode 2 arming accepts the measured BYROBOT X-axis endpoint", () => {
-  const corner = (magnitude) =>
+test("Mode 2 arming accepts shorter horizontal travel at a real diagonal", () => {
+  const corner = (down, inward) =>
     mappedState({
-      throttle: -magnitude,
-      yaw: magnitude,
-      pitch: -magnitude,
-      roll: magnitude,
+      throttle: -down,
+      yaw: inward,
+      pitch: -down,
+      roll: inward,
     });
 
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.57)), false);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.58)), true);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.65)), true);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(1)), true);
-  assert.equal(
-    gestures.resolveMode2GestureConfig().armingAxisThreshold,
-    0.58,
-  );
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.51, 0.65)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.8, 0.41)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.52, 0.42)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.8, 0.55)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(1, 1)), true);
+  const config = gestures.resolveMode2GestureConfig();
+  assert.equal(config.armingDownThreshold, 0.52);
+  assert.equal(config.armingInwardThreshold, 0.42);
 });
 
 test("a momentary analog wobble does not erase the three-second hold", () => {
@@ -165,11 +165,11 @@ test("a momentary analog wobble does not erase the three-second hold", () => {
 
   detector.observe(corner, 0);
   detector.observe(corner, 1400);
-  const wobble = detector.observe(mappedState(), 1520);
+  const wobble = detector.observe(mappedState(), 1650);
   assert.equal(wobble.phase, gestures.MODE2_GESTURE_PHASE.ARMING);
   assert.ok(wobble.armingProgress > 0.5);
 
-  const recovered = detector.observe(corner, 1600);
+  const recovered = detector.observe(corner, 1700);
   assert.equal(recovered.phase, gestures.MODE2_GESTURE_PHASE.ARMING);
   const armed = detector.observe(corner, 3000);
   assert.equal(armed.phase, gestures.MODE2_GESTURE_PHASE.ARMED);
@@ -187,7 +187,7 @@ test("releasing the sticks beyond the grace period still cancels arming", () => 
   detector.observe(corner, 0);
   detector.observe(corner, 1000);
   assert.equal(
-    detector.observe(mappedState(), 1200).phase,
+    detector.observe(mappedState(), 1350).phase,
     gestures.MODE2_GESTURE_PHASE.READY,
   );
 });

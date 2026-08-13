@@ -203,6 +203,49 @@ test("box obstacles expose exact above-ground dimensions to the 3D scene", () =>
   assert.equal(marker.position.y - marker.size.y / 2, 0);
 });
 
+test("medical scenery keeps both hospitals clear of the operational pads", () => {
+  const initial = flightState();
+  const coordinator = new ExperienceCoordinator(initial);
+  coordinator.applyTeacherAction("start_medical_mission", initial);
+  prepareSelectedMission(coordinator);
+
+  const markers = coordinator.getSnapshot().scene.markers;
+  const startPad = markers.find((marker) => marker.id === "medical-delivery-start");
+  const hospitalA = markers.find((marker) => marker.id === "medical-hospital-a");
+  const hospitalB = markers.find((marker) => marker.id === "medical-hospital-b");
+  const landingPad = markers.find((marker) => marker.id === "hospital-b-pad");
+
+  assert.equal(startPad?.kind, "start-pad");
+  assert.deepEqual(startPad?.position, { x: 0, y: 0, z: 0 });
+  assert.equal(hospitalA?.kind, "hospital");
+  assert.notDeepEqual(hospitalA?.position, startPad?.position);
+  assert.equal(hospitalB?.kind, "hospital");
+  assert.notDeepEqual(hospitalB?.position, landingPad?.position);
+  assert.equal(landingPad?.kind, "landing-pad");
+  assert.deepEqual(landingPad?.position, { x: 8, y: 0, z: 24 });
+});
+
+test("disaster search uses rubble and a separate field command center", () => {
+  const initial = flightState();
+  const coordinator = new ExperienceCoordinator(initial);
+  coordinator.applyTeacherAction("start_disaster_search", initial);
+  prepareSelectedMission(coordinator);
+
+  const markers = coordinator.getSnapshot().scene.markers;
+  assert.equal(
+    markers.find((marker) => marker.id === "search-command-center")?.kind,
+    "command-center",
+  );
+  assert.equal(
+    markers.find((marker) => marker.id === "search-rubble-1")?.kind,
+    "rubble",
+  );
+  assert.equal(
+    markers.find((marker) => marker.id === "disaster-search-start")?.kind,
+    "start-pad",
+  );
+});
+
 test("course gate visuals expose the exact trigger-plane normal", () => {
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);

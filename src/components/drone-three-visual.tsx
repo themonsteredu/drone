@@ -605,9 +605,16 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
   // Box-volume markers arrive at their exact volume center. The clamp keeps
   // legacy markers above the runway instead of allowing half a mesh to sink.
   const centerY = Math.max(height / 2 + 0.02, marker.position.y);
+  const facadeColor = isHospital
+    ? marker.variant === "hospital-b"
+      ? 0xe8f3fb
+      : 0xf3f6f8
+    : marker.variant === "city"
+      ? 0x587389
+      : 0x667b8d;
   const building = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
-    meshMaterial(isHospital ? 0xe8edf2 : 0x667b8d, 0.78, 0.04),
+    meshMaterial(facadeColor, 0.78, 0.04),
   );
   building.position.set(marker.position.x, centerY, marker.position.z);
   group.add(building);
@@ -633,7 +640,113 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
     horizontal.position.set(marker.position.x, roofY + 0.11, marker.position.z);
     vertical.position.copy(horizontal.position);
     group.add(horizontal, vertical);
+
+    const facadeCross = new THREE.Group();
+    const facadeHorizontal = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.28, 0.05),
+      red,
+    );
+    const facadeVertical = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 1.1, 0.05),
+      red,
+    );
+    facadeCross.add(facadeHorizontal, facadeVertical);
+    facadeCross.position.set(
+      marker.position.x,
+      centerY + Math.min(0.45, height * 0.08),
+      marker.position.z - depth / 2 - 0.035,
+    );
+    group.add(facadeCross);
   }
+
+  const windowMaterial = new THREE.MeshBasicMaterial({
+    color: isHospital ? 0x7fc7ef : 0xb7e1f5,
+  });
+  const windowRows = Math.max(1, Math.min(4, Math.floor(height / 1.45)));
+  const windowColumns = Math.max(2, Math.min(5, Math.floor(width / 1.2)));
+  for (let row = 0; row < windowRows; row += 1) {
+    for (let column = 0; column < windowColumns; column += 1) {
+      if (isHospital && row === Math.floor(windowRows / 2) && column === Math.floor(windowColumns / 2)) {
+        continue;
+      }
+      const windowPane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.42, 0.34),
+        windowMaterial,
+      );
+      windowPane.position.set(
+        marker.position.x - width * 0.36 + (column / Math.max(1, windowColumns - 1)) * width * 0.72,
+        centerY - height * 0.3 + (row / Math.max(1, windowRows - 1)) * height * 0.58,
+        marker.position.z - depth / 2 - 0.04,
+      );
+      group.add(windowPane);
+    }
+  }
+}
+
+function addRubble(marker: DroneSceneMarker, group: THREE.Group): void {
+  const width = Math.max(1.4, marker.size?.x ?? 3.2);
+  const height = Math.max(2.8, marker.size?.y ?? 4.8);
+  const depth = Math.max(1.4, marker.size?.z ?? 3.2);
+  const concrete = [0x596773, 0x73808a, 0x465560] as const;
+  const pieces = [
+    { x: -0.24, z: -0.14, width: 0.48, depth: 0.56, height: 1, rotation: -0.08 },
+    { x: 0.25, z: 0.16, width: 0.44, depth: 0.48, height: 0.76, rotation: 0.13 },
+    { x: 0.02, z: -0.34, width: 0.32, depth: 0.28, height: 0.52, rotation: -0.18 },
+  ] as const;
+  pieces.forEach((piece, index) => {
+    const pieceHeight = height * piece.height;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(width * piece.width, pieceHeight, depth * piece.depth),
+      meshMaterial(concrete[index], 0.92, 0.02),
+    );
+    mesh.position.set(
+      marker.position.x + width * piece.x,
+      pieceHeight / 2 + 0.02,
+      marker.position.z + depth * piece.z,
+    );
+    mesh.rotation.z = piece.rotation;
+    group.add(mesh);
+  });
+
+  const warning = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.72, 0.08, 0.16),
+    new THREE.MeshBasicMaterial({ color: 0xff9d32 }),
+  );
+  warning.position.set(marker.position.x, 0.12, marker.position.z - depth * 0.46);
+  group.add(warning);
+}
+
+function addCommandCenter(marker: DroneSceneMarker, group: THREE.Group): void {
+  const width = Math.max(3.8, marker.size?.x ?? 4.6);
+  const height = Math.max(2.6, marker.size?.y ?? 3);
+  const depth = Math.max(3.2, marker.size?.z ?? 3.8);
+  const centerY = height / 2 + 0.02;
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    meshMaterial(0xe5ebee, 0.86, 0.02),
+  );
+  base.position.set(marker.position.x, centerY, marker.position.z);
+  group.add(base);
+
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(width + 0.03, 0.42, depth + 0.03),
+    meshMaterial(0x1d63ad, 0.62, 0.06),
+  );
+  stripe.position.set(marker.position.x, centerY + height * 0.16, marker.position.z);
+  group.add(stripe);
+
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.045, 0.06, 2.2, 7),
+    meshMaterial(0x324656, 0.6, 0.28),
+  );
+  mast.position.set(marker.position.x + width * 0.32, height + 1.1, marker.position.z);
+  group.add(mast);
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff8a32 }),
+  );
+  beacon.position.set(mast.position.x, height + 2.2, mast.position.z);
+  group.add(beacon);
 }
 
 function addSearchTarget(marker: DroneSceneMarker, group: THREE.Group): void {
@@ -739,6 +852,12 @@ function rebuildMarkers(
       case "hospital":
         addBuilding(marker, group);
         break;
+      case "rubble":
+        addRubble(marker, group);
+        break;
+      case "command-center":
+        addCommandCenter(marker, group);
+        break;
       case "search-target":
         addSearchTarget(marker, group);
         break;
@@ -757,9 +876,78 @@ function markerSignature(scene: DroneScenePresentation): string {
   return scene.markers
     .map(
       (marker) =>
-        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.size?.x ?? ""}:${marker.size?.y ?? ""}:${marker.size?.z ?? ""}:${marker.radius ?? ""}:${marker.path?.map((point) => `${point.x},${point.y},${point.z}`).join(";") ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}`,
+        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.size?.x ?? ""}:${marker.size?.y ?? ""}:${marker.size?.z ?? ""}:${marker.radius ?? ""}:${marker.path?.map((point) => `${point.x},${point.y},${point.z}`).join(";") ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}:${marker.variant ?? ""}`,
     )
     .join("|");
+}
+
+const CAMERA_BLOCKING_MARKERS = new Set<DroneSceneMarker["kind"]>([
+  "building",
+  "hospital",
+  "rubble",
+  "command-center",
+]);
+
+function segmentCrossesMarker(
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+  marker: DroneSceneMarker,
+): boolean {
+  if (!marker.size || !CAMERA_BLOCKING_MARKERS.has(marker.kind)) return false;
+  const padding = 0.45;
+  const min = new THREE.Vector3(
+    marker.position.x - marker.size.x / 2 - padding,
+    Math.max(0, marker.position.y - marker.size.y / 2) - padding,
+    marker.position.z - marker.size.z / 2 - padding,
+  );
+  const max = new THREE.Vector3(
+    marker.position.x + marker.size.x / 2 + padding,
+    marker.position.y + marker.size.y / 2 + padding,
+    marker.position.z + marker.size.z / 2 + padding,
+  );
+  const direction = end.clone().sub(start);
+  let entry = 0;
+  let exit = 1;
+  for (const axis of ["x", "y", "z"] as const) {
+    if (Math.abs(direction[axis]) < 0.0001) {
+      if (start[axis] < min[axis] || start[axis] > max[axis]) return false;
+      continue;
+    }
+    const inverse = 1 / direction[axis];
+    let near = (min[axis] - start[axis]) * inverse;
+    let far = (max[axis] - start[axis]) * inverse;
+    if (near > far) [near, far] = [far, near];
+    entry = Math.max(entry, near);
+    exit = Math.min(exit, far);
+    if (entry > exit) return false;
+  }
+  return exit >= 0 && entry <= 1;
+}
+
+function avoidCameraObstacles(
+  desiredCamera: THREE.Vector3,
+  desiredLook: THREE.Vector3,
+  transform: DroneTransform,
+  markers: readonly DroneSceneMarker[],
+): void {
+  const blocker = markers.find((marker) =>
+    segmentCrossesMarker(desiredCamera, desiredLook, marker),
+  );
+  if (!blocker?.size) return;
+
+  const yaw = transform.rotation.yaw;
+  const side = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const blockerOffset = new THREE.Vector3(
+    blocker.position.x - transform.position.x,
+    0,
+    blocker.position.z - transform.position.z,
+  );
+  const sideDirection = blockerOffset.dot(side) >= 0 ? -1 : 1;
+  desiredCamera.addScaledVector(side, sideDirection * 4.8);
+  desiredCamera.y = Math.max(
+    desiredCamera.y,
+    blocker.position.y + blocker.size.y / 2 + 2.4,
+  );
 }
 
 function lerpAngle(current: number, target: number, amount: number): number {
@@ -975,6 +1163,12 @@ export function DroneThreeVisual({
           transform.position.x + forwardX * 3.2,
           transform.position.y + 0.9,
           transform.position.z + forwardZ * 3.2,
+        );
+        avoidCameraObstacles(
+          desiredCamera,
+          desiredLook,
+          transform,
+          presentation.markers,
         );
       }
       // Once the gear touches down, stop the last few damped camera frames.

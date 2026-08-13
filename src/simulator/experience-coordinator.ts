@@ -911,30 +911,63 @@ export class ExperienceCoordinator {
       }
       markers.push({
         id: `${this.mission.id}-start`,
-        kind: this.mission.kind === "medical_delivery" ? "hospital" : "start-pad",
+        kind: "start-pad",
         position: this.mission.startPosition,
-        radius: this.mission.kind === "medical_delivery" ? 1.4 : 1.8,
-        label: this.mission.kind === "medical_delivery" ? "병원 A" : "출발 지점",
+        radius: this.mission.kind === "medical_delivery" ? 2.2 : 2.4,
+        label: this.mission.kind === "medical_delivery" ? "병원 A 출발장" : "현장 지휘소 출발장",
+        active: !this.missionRuntime.preflightConfirmed,
       });
+      if (this.mission.kind === "medical_delivery") {
+        // Buildings are scenery beside the operational pads, never on top of
+        // the drone or landing trigger. This keeps both the camera and the
+        // collision model readable from the first frame.
+        markers.push(
+          {
+            id: "medical-hospital-a",
+            kind: "hospital",
+            position: { x: -8.2, y: 2.5, z: 0.8 },
+            size: { x: 5.8, y: 5, z: 5.4 },
+            radius: 2.6,
+            label: "병원 A",
+            variant: "hospital-a",
+          },
+          {
+            id: "medical-hospital-b",
+            kind: "hospital",
+            position: { x: 14, y: 3.1, z: 24.8 },
+            size: { x: 6.8, y: 6.2, z: 6.2 },
+            radius: 3,
+            label: "병원 B",
+            variant: "hospital-b",
+          },
+        );
+      } else {
+        markers.push({
+          id: "search-command-center",
+          kind: "command-center",
+          position: { x: -6.8, y: 1.5, z: -0.5 },
+          size: { x: 4.6, y: 3, z: 3.8 },
+          radius: 2.2,
+          label: "현장 지휘소",
+          variant: "disaster",
+        });
+      }
       for (const obstacle of this.mission.obstacles) {
         markers.push({
           id: obstacle.id,
-          kind: "building",
+          kind: this.mission.kind === "disaster_search" ? "rubble" : "building",
           position: volumeCenter(obstacle.volume),
           size: volumeSize(obstacle.volume),
           radius: volumeRadius(obstacle.volume),
           label: obstacle.label,
+          variant: this.mission.kind === "disaster_search" ? "disaster" : "city",
         });
       }
       for (const target of this.mission.targets) {
+        if (target.action === "landing") continue;
         markers.push({
           id: target.id,
-          kind:
-            target.action === "landing"
-              ? this.mission.kind === "medical_delivery"
-                ? "hospital"
-                : "landing-pad"
-              : "search-target",
+          kind: "search-target",
           position: target.position,
           radius: target.activationRadius,
           label: target.label,
@@ -958,6 +991,12 @@ export class ExperienceCoordinator {
         position: this.mission.landingZone.center,
         radius: landingZoneRadius(this.mission.landingZone),
         label: this.mission.landingZone.label,
+        active:
+          this.mission.kind === "medical_delivery"
+            ? this.missionRuntime.operationPhase === "FLIGHT" ||
+              this.missionRuntime.operationPhase === "HANDOVER"
+            : this.missionRuntime.foundTargetIds.length >=
+              this.mission.targets.filter((target) => target.required).length,
       });
     }
     return {

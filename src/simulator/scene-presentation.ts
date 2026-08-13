@@ -5,6 +5,8 @@ export type DroneSceneMarkerKind =
   | "arrow"
   | "building"
   | "hospital"
+  | "rubble"
+  | "command-center"
   | "flight-corridor"
   | "search-target"
   | "wind-zone";
@@ -23,6 +25,8 @@ export interface DroneSceneMarker {
   label?: string;
   active?: boolean;
   completed?: boolean;
+  /** Visual-only styling hint. It never changes collision or mission rules. */
+  variant?: "hospital-a" | "hospital-b" | "city" | "disaster";
 }
 
 export interface DroneScenePresentation {

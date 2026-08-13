@@ -119,6 +119,14 @@ test("training and certification courses expose three ordered gates and precisio
       `${gate.id} must be fully above the runway`,
     );
   }
+  for (const obstacle of BASIC_TRAINING_COURSE.obstacles) {
+    assert.equal(
+      obstacle.volume.shape,
+      "box",
+      `${obstacle.id} must expose its exact height to the scene`,
+    );
+    assert.equal(obstacle.volume.max.y - obstacle.volume.min.y, 12);
+  }
 });
 
 test("gate pass requires a forward plane crossing through the clear opening", () => {

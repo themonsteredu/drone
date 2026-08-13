@@ -69,5 +69,8 @@ test("the real-time 3D view is dynamically loaded without post-processing", asyn
   assert.match(visual, /FRONT_ROTOR_COLOR = 0xff783f/);
   assert.match(visual, /REAR_ROTOR_COLOR = 0x3478f6/);
   assert.match(visual, /LANDING_PAD_VISUAL_SCALE = 1\.18/);
+  assert.match(visual, /DRONE_GROUND_CLEARANCE = 0\.65/);
+  assert.match(visual, /const grounded = transform\.position\.y <= 0\.02/);
+  assert.match(visual, /new THREE\.RingGeometry/);
   assert.doesNotMatch(visual, /EffectComposer|UnrealBloomPass|textureLoader/i);
 });

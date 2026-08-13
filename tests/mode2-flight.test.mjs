@@ -80,7 +80,7 @@ const DEFAULT_PREFERENCES = {
 test("Mode 2 arming uses semantic ControllerState and requires a continuous three-second hold", () => {
   const detector = new gestures.Mode2GestureDetector();
   const inwardDown = mappedState(
-    { throttle: -0.9, yaw: 0.82, pitch: -0.88, roll: 0.8 },
+    { throttle: -0.9, yaw: 0.82, pitch: -0.88, roll: -0.8 },
     {},
     // Deliberately contradictory raw data: raw indices must be irrelevant.
     [1, 1, 1, 1],
@@ -118,7 +118,7 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
     throttle: -0.8,
     yaw: 0.8,
     pitch: -0.8,
-    roll: 0.8,
+    roll: -0.8,
   };
   assert.equal(
     gestures.isMode2ArmingGestureActive(mappedState(active)),
@@ -141,7 +141,7 @@ test("Mode 2 arming accepts shorter horizontal travel at a real diagonal", () =>
       throttle: -down,
       yaw: inward,
       pitch: -down,
-      roll: inward,
+      roll: -inward,
     });
 
   assert.equal(gestures.isMode2ArmingGestureActive(corner(0.51, 0.65)), false);
@@ -160,7 +160,7 @@ test("a momentary analog wobble does not erase the three-second hold", () => {
     throttle: -0.8,
     yaw: 0.65,
     pitch: -0.8,
-    roll: 0.65,
+    roll: -0.65,
   });
 
   detector.observe(corner, 0);
@@ -181,7 +181,7 @@ test("releasing the sticks beyond the grace period still cancels arming", () => 
     throttle: -0.8,
     yaw: 0.65,
     pitch: -0.8,
-    roll: 0.65,
+    roll: -0.65,
   });
 
   detector.observe(corner, 0);
@@ -268,7 +268,7 @@ test("FlightController drives READY -> ARMING -> ARMED and gates emergency by se
     throttle: -0.9,
     yaw: 0.9,
     pitch: -0.9,
-    roll: 0.9,
+    roll: -0.9,
   });
 
   for (const now of [0, 1000, 2000, 3000]) {
@@ -305,7 +305,7 @@ const ARMING_CORNER = {
   throttle: -0.85,
   yaw: 0.85,
   pitch: -0.85,
-  roll: 0.85,
+  roll: -0.85,
 };
 
 test("a corner held through a live 0x71 stream completes the three-second hold", () => {
@@ -322,6 +322,28 @@ test("a corner held through a live 0x71 stream completes the three-second hold",
 
   assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
   assert.equal(flightController.getMode2GestureState().armingProgress, 1);
+});
+
+test("a new training stage can arm again after the previous stage reset", () => {
+  const flightController = new controller.FlightController(
+    DEFAULT_PREFERENCES,
+  );
+
+  for (let now = 0; now <= 3000; now += 100) {
+    flightController.setControllerState(mappedState(ARMING_CORNER), true, now);
+    flightController.step(0.1, now, true);
+  }
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
+
+  flightController.dispatch("reset");
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.READY);
+  assert.equal(flightController.getMode2GestureState().armingProgress, 0);
+
+  for (let now = 4000; now <= 7000; now += 100) {
+    flightController.setControllerState(mappedState(ARMING_CORNER), true, now);
+    flightController.step(0.1, now, true);
+  }
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
 });
 
 test("a corner sample that stops streaming cancels arming instead of completing it", () => {

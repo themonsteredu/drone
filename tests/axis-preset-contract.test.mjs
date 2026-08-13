@@ -114,14 +114,15 @@ test("the default preset keeps the documented semantic stick directions", () => 
 test("the documented Mode 2 corner reaches the arming gesture through the preset", () => {
   // Left stick about 5 o'clock and right stick about 7 o'clock, per README.
   const corner = project(
-    raw({ leftX: 1, leftY: -1, rightX: -1, rightY: -1 }),
+    raw({ leftX: 1, leftY: -1, rightX: 1, rightY: -1 }),
   );
 
   assert.equal(corner.mappingStatus, "mapped");
+  assert.equal(corner.roll, -1, "physical right-stick left is negative Roll");
   assert.equal(
     gestures.isMode2ArmingGestureActive(corner),
     true,
-    "an inverted axis sign makes the start gesture unreachable at any threshold",
+    "the verified 7 o'clock corner must remain reachable after Roll correction",
   );
 });
 

@@ -32,6 +32,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 const FRONT_ROTOR_COLOR = 0xff783f;
 const REAR_ROTOR_COLOR = 0x3478f6;
 const LANDING_PAD_VISUAL_SCALE = 1.18;
+const DRONE_GROUND_CLEARANCE = 0.65;
+const LANDING_PAD_SURFACE_Y = 0.04;
 
 function meshMaterial(
   color: THREE.ColorRepresentation,
@@ -489,16 +491,26 @@ function addPad(marker: DroneSceneMarker, group: THREE.Group): void {
   group.add(pad);
   for (const [index, ratio] of [0.3, 0.55, 0.78, 0.96].entries()) {
     const ringColor = index === 3 ? color : 0xf4f8fb;
+    const bandWidth = index === 3 ? 0.055 : 0.03;
+    const ringRadius = radius * ratio;
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius * ratio, index === 3 ? 0.1 : 0.055, 8, 36),
+      new THREE.RingGeometry(
+        Math.max(0.01, ringRadius - bandWidth),
+        ringRadius + bandWidth,
+        36,
+      ),
       new THREE.MeshStandardMaterial({
         color: ringColor,
         emissive: ringColor,
         emissiveIntensity: active && index === 3 ? 0.42 : 0.08,
       }),
     );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.set(marker.position.x, 0.075, marker.position.z);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(
+      marker.position.x,
+      LANDING_PAD_SURFACE_Y + 0.004,
+      marker.position.z,
+    );
     group.add(ring);
   }
 
@@ -514,7 +526,11 @@ function addPad(marker: DroneSceneMarker, group: THREE.Group): void {
     );
     for (const mark of [crossbar, upright]) {
       mark.rotation.x = -Math.PI / 2;
-      mark.position.set(marker.position.x, 0.082, marker.position.z);
+      mark.position.set(
+        marker.position.x,
+        LANDING_PAD_SURFACE_Y + 0.005,
+        marker.position.z,
+      );
       group.add(mark);
     }
   }
@@ -848,7 +864,10 @@ export function DroneThreeVisual({
 
       drone.root.position.set(
         transform.position.x,
-        Math.max(0.61, transform.position.y + 0.61),
+        Math.max(
+          DRONE_GROUND_CLEARANCE,
+          transform.position.y + DRONE_GROUND_CLEARANCE,
+        ),
         transform.position.z,
       );
       drone.root.rotation.y = lerpAngle(
@@ -903,7 +922,15 @@ export function DroneThreeVisual({
           transform.position.z + forwardZ * 3.2,
         );
       }
-      const cameraResponse = reducedMotion ? 1 : isTutorial ? 0.09 : 0.12;
+      // Once the gear touches down, stop the last few damped camera frames.
+      // Otherwise a fixed world-space pad appears to slide under a stationary
+      // drone even though its marker coordinates never changed.
+      const grounded = transform.position.y <= 0.02;
+      const cameraResponse = reducedMotion || grounded
+        ? 1
+        : isTutorial
+          ? 0.09
+          : 0.12;
       camera.position.lerp(desiredCamera, cameraResponse);
       lookTarget.lerp(desiredLook, cameraResponse);
       camera.lookAt(lookTarget);

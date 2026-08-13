@@ -759,14 +759,16 @@ export class ExperienceCoordinator {
     const stage = this.progress.stage;
     if (stage === "TUTORIAL") {
       const tutorialStep = this.getSnapshotSafeTutorial();
-      markers.push({
-        id: "tutorial-start-pad",
-        kind: "start-pad",
-        position: { x: 0, y: 0, z: 0 },
-        radius: 1.2,
-        label: tutorialStep?.id === "landing" ? "착륙" : "출발",
-        active: tutorialStep?.id === "arming" || tutorialStep?.id === "landing",
-      });
+      if (tutorialStep?.id === "arming" || tutorialStep?.id === "takeoff") {
+        markers.push({
+          id: "tutorial-start-pad",
+          kind: "start-pad",
+          position: { x: 0, y: 0, z: 0 },
+          radius: 1.2,
+          label: "출발",
+          active: true,
+        });
+      }
       if (tutorialStep?.id === "forward") {
         const target = bodyRelativePoint(
           this.tutorial.baselinePosition,
@@ -779,7 +781,7 @@ export class ExperienceCoordinator {
           kind: "arrow",
           position: { x: target.x, y: 0.05, z: target.z },
           radius: 1,
-          label: "앞쪽 표식",
+          label: "전진 목표",
           active: true,
         });
       }

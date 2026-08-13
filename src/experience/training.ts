@@ -57,7 +57,7 @@ export const MODE2_TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
     id: "forward",
     order: 4,
     title: "전진",
-    instruction: "오른쪽 스틱을 위로 움직여 앞쪽 표식까지 이동하세요.",
+    instruction: "빨간 앞방향 선을 따라 오른쪽 스틱을 위로 움직여 주황색 ‘전진 목표’까지 이동하세요.",
     successMessage: "전진 성공",
     criterion: {
       kind: "body_relative_distance",

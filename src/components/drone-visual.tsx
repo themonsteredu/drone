@@ -2,7 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import type { DroneTransform } from "../simulator/drone-transform";
-import { projectScenePoint } from "../simulator/scene-projection";
+import {
+  projectScenePoint,
+  resolveSceneCamera,
+} from "../simulator/scene-projection";
 import {
   EMPTY_DRONE_SCENE,
   type DroneScenePresentation,
@@ -45,6 +48,9 @@ function drawDroneScene(
   const isSearchScene = scene.markers.some(
     (marker) => marker.kind === "search-target",
   );
+  const isTutorialScene = scene.markers.some((marker) =>
+    marker.id.startsWith("tutorial-"),
+  );
 
   const sky = context.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, isSearchScene ? "#92c9f4" : "#91d0ff");
@@ -74,6 +80,9 @@ function drawDroneScene(
   context.stroke();
 
   const horizonY = h * 0.5;
+  const floorTop = horizonY + 48;
+  context.fillStyle = isSearchScene ? "#dde5d8" : "#e7f1f7";
+  context.fillRect(0, floorTop, w, h - floorTop);
   context.fillStyle = isSearchScene ? "#8eb17c" : "#a9cba5";
   context.beginPath();
   context.moveTo(0, horizonY + 15);
@@ -85,6 +94,30 @@ function drawDroneScene(
   context.lineTo(0, horizonY + 54);
   context.closePath();
   context.fill();
+
+  // A fixed perspective floor gives students a stable visual reference.
+  // It deliberately does not move with the aircraft.
+  context.save();
+  context.beginPath();
+  context.rect(0, floorTop, w, h - floorTop);
+  context.clip();
+  context.strokeStyle = "rgba(54, 116, 165, 0.16)";
+  context.lineWidth = 1;
+  for (let index = -12; index <= 12; index += 1) {
+    context.beginPath();
+    context.moveTo(w * 0.5, floorTop);
+    context.lineTo(w * 0.5 + index * (w / 18), h + 8);
+    context.stroke();
+  }
+  for (let index = 1; index <= 12; index += 1) {
+    const progress = index / 12;
+    const y = floorTop + (h - floorTop) * progress * progress;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(w, y);
+    context.stroke();
+  }
+  context.restore();
 
   context.save();
   context.globalAlpha = 0.72;
@@ -118,59 +151,27 @@ function drawDroneScene(
 
   const { position, rotation, tilt, rotorSpeed } = transform;
   const scale = Math.max(22, Math.min(42, w / 20));
-  // The training drone remains in view while the test grid moves below it.
-  const cameraX = position.x;
-  const cameraZ = position.z;
+  const camera = resolveSceneCamera(position, isTutorialScene);
+  const cameraX = camera.x;
+  const cameraZ = camera.z;
   const originX = w * 0.5;
   const originY = h * 0.68;
-  context.lineWidth = 1;
-  for (let index = -8; index <= 8; index += 1) {
-    const major = index % 4 === 0;
-    context.strokeStyle = major
-      ? "rgba(53, 111, 157, 0.28)"
-      : "rgba(70, 122, 162, 0.12)";
-    context.beginPath();
-    let point = projectPoint(
-      index - cameraX,
-      0,
-      -8 - cameraZ,
-      originX,
-      originY,
-      scale,
-    );
-    context.moveTo(point[0], point[1]);
-    point = projectPoint(
-      index - cameraX,
-      0,
-      8 - cameraZ,
-      originX,
-      originY,
-      scale,
-    );
-    context.lineTo(point[0], point[1]);
-    context.stroke();
-
-    context.beginPath();
-    point = projectPoint(
-      -8 - cameraX,
-      0,
-      index - cameraZ,
-      originX,
-      originY,
-      scale,
-    );
-    context.moveTo(point[0], point[1]);
-    point = projectPoint(
-      8 - cameraX,
-      0,
-      index - cameraZ,
-      originX,
-      originY,
-      scale,
-    );
-    context.lineTo(point[0], point[1]);
-    context.stroke();
-  }
+  const ground = projectPoint(
+    position.x - cameraX,
+    0,
+    position.z - cameraZ,
+    originX,
+    originY,
+    scale,
+  );
+  const center = projectPoint(
+    position.x - cameraX,
+    position.y + 0.32,
+    position.z - cameraZ,
+    originX,
+    originY,
+    scale,
+  );
 
   const routeMarker = scene.markers
     .filter(
@@ -205,8 +206,8 @@ function drawDroneScene(
       scale,
     );
     const routeGradient = context.createLinearGradient(
-      originX,
-      originY,
+      center[0],
+      center[1],
       routePoint[0],
       routePoint[1],
     );
@@ -216,14 +217,14 @@ function drawDroneScene(
     context.lineWidth = 16;
     context.lineCap = "round";
     context.beginPath();
-    context.moveTo(originX, originY + 5);
+    context.moveTo(center[0], center[1] + 5);
     context.lineTo(routePoint[0], routePoint[1]);
     context.stroke();
     context.strokeStyle = "rgba(229, 249, 255, 0.92)";
     context.setLineDash([10, 9]);
     context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(originX, originY + 5);
+    context.moveTo(center[0], center[1] + 5);
     context.lineTo(routePoint[0], routePoint[1]);
     context.stroke();
     context.setLineDash([]);
@@ -326,17 +327,20 @@ function drawDroneScene(
       context.fill();
       context.stroke();
     } else if (marker.kind === "arrow") {
+      const pulse = 1 + Math.sin(time * 0.0045) * 0.08;
+      context.fillStyle = "rgba(255, 122, 61, 0.16)";
       context.strokeStyle = color;
-      context.fillStyle = color;
       context.lineWidth = 4;
       context.beginPath();
-      context.moveTo(point[0] - radius * 0.5, point[1]);
-      context.lineTo(point[0] + radius * 0.5, point[1]);
+      context.arc(point[0], point[1], radius * 0.58 * pulse, 0, Math.PI * 2);
+      context.fill();
       context.stroke();
+      context.fillStyle = color;
       context.beginPath();
-      context.moveTo(point[0] + radius * 0.5, point[1]);
-      context.lineTo(point[0] + radius * 0.2, point[1] - 10);
-      context.lineTo(point[0] + radius * 0.2, point[1] + 10);
+      context.moveTo(point[0], point[1] - 15);
+      context.lineTo(point[0] + 13, point[1] + 9);
+      context.lineTo(point[0], point[1] + 4);
+      context.lineTo(point[0] - 13, point[1] + 9);
       context.closePath();
       context.fill();
     }
@@ -351,38 +355,33 @@ function drawDroneScene(
     context.restore();
   }
 
-  const ground = projectPoint(
-    position.x - cameraX,
-    0,
-    position.z - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
-  const center = projectPoint(
-    position.x - cameraX,
-    position.y + 0.32,
-    position.z - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
-
   const shadowScale = Math.max(0.28, 1 - position.y * 0.08);
   context.save();
   context.translate(ground[0], ground[1] + 6);
   context.scale(1, 0.42);
   context.beginPath();
-  context.arc(0, 0, 34 * shadowScale, 0, Math.PI * 2);
+  context.arc(0, 0, 42 * shadowScale, 0, Math.PI * 2);
   context.fillStyle = `rgba(39, 57, 70, ${Math.max(0.08, 0.2 - position.y * 0.018)})`;
   context.fill();
   context.restore();
 
+  const noseWorldX = position.x + Math.sin(rotation.yaw) * 0.92;
+  const noseWorldZ = position.z + Math.cos(rotation.yaw) * 0.92;
+  const nose = projectPoint(
+    noseWorldX - cameraX,
+    position.y + 0.34,
+    noseWorldZ - cameraZ,
+    originX,
+    originY,
+    scale,
+  );
+  const screenHeading = Math.atan2(nose[1] - center[1], nose[0] - center[0]);
+
   const localRotors: Array<[number, number]> = [
-    [-0.58, -0.58],
-    [0.58, -0.58],
-    [0.58, 0.58],
-    [-0.58, 0.58],
+    [-0.76, -0.7],
+    [0.76, -0.7],
+    [0.76, 0.7],
+    [-0.76, 0.7],
   ];
   const cos = Math.cos(rotation.yaw);
   const sin = Math.sin(rotation.yaw);
@@ -401,8 +400,16 @@ function drawDroneScene(
   });
 
   context.lineCap = "round";
-  context.lineWidth = 9;
-  context.strokeStyle = "#26384d";
+  context.lineWidth = 12;
+  context.strokeStyle = "#2d4258";
+  for (const point of rotorPoints) {
+    context.beginPath();
+    context.moveTo(center[0], center[1]);
+    context.lineTo(point[0], point[1]);
+    context.stroke();
+  }
+  context.lineWidth = 4;
+  context.strokeStyle = "#71879b";
   for (const point of rotorPoints) {
     context.beginPath();
     context.moveTo(center[0], center[1]);
@@ -416,50 +423,50 @@ function drawDroneScene(
     context.save();
     context.translate(point[0], point[1]);
     context.rotate(bladeAngle * (index % 2 === 0 ? 1 : -1));
-    context.strokeStyle = `rgba(28, 51, 72, ${0.48 + rotorSpeed * 0.16})`;
-    context.lineWidth = 4;
+    context.strokeStyle = `rgba(31, 55, 76, ${0.52 + rotorSpeed * 0.14})`;
+    context.lineWidth = 5;
     context.beginPath();
-    context.moveTo(-23, 0);
-    context.lineTo(23, 0);
-    context.moveTo(0, -7);
-    context.lineTo(0, 7);
+    context.ellipse(0, 0, 28, 8, 0, 0, Math.PI * 2);
     context.stroke();
     context.fillStyle = index < 2 ? "#ff8d48" : "#3f7cff";
     context.beginPath();
-    context.arc(0, 0, 7, 0, Math.PI * 2);
+    context.arc(0, 0, 8, 0, Math.PI * 2);
     context.fill();
     context.restore();
   });
 
   context.save();
   context.translate(center[0], center[1]);
-  context.rotate(-tilt.roll * 0.65);
-  context.fillStyle = "#ffffff";
+  context.rotate(screenHeading - tilt.roll * 0.35);
+  const bodyGradient = context.createLinearGradient(-34, -20, 34, 20);
+  bodyGradient.addColorStop(0, "#f8fbff");
+  bodyGradient.addColorStop(0.58, "#ffffff");
+  bodyGradient.addColorStop(1, "#cbd8e4");
+  context.fillStyle = bodyGradient;
   context.strokeStyle = "#1e3146";
   context.lineWidth = 3;
   context.beginPath();
-  context.roundRect(-26, -16, 52, 32, 12);
+  context.roundRect(-34, -20, 68, 40, 15);
   context.fill();
   context.stroke();
-  context.fillStyle = "#306eff";
+  context.fillStyle = "#27476a";
   context.beginPath();
-  context.roundRect(-13, -8, 26, 16, 6);
+  context.roundRect(5, -12, 22, 24, 8);
+  context.fill();
+  context.fillStyle = "#3f7cff";
+  context.beginPath();
+  context.roundRect(-20, -9, 20, 18, 7);
+  context.fill();
+  context.fillStyle = "rgba(151, 220, 255, 0.85)";
+  context.beginPath();
+  context.ellipse(15, -4, 7, 4, 0, 0, Math.PI * 2);
   context.fill();
   context.restore();
 
   // Red line is intentionally retained as the aircraft-forward marker.
-  const noseWorldX = position.x + Math.sin(rotation.yaw) * 0.78;
-  const noseWorldZ = position.z + Math.cos(rotation.yaw) * 0.78;
-  const nose = projectPoint(
-    noseWorldX - cameraX,
-    position.y + 0.34,
-    noseWorldZ - cameraZ,
-    originX,
-    originY,
-    scale,
-  );
   context.strokeStyle = "#ff6c3b";
-  context.lineWidth = 4;
+  context.lineWidth = 5;
+  context.lineCap = "round";
   context.beginPath();
   context.moveTo(center[0], center[1]);
   context.lineTo(nose[0], nose[1]);
@@ -526,24 +533,13 @@ export function DroneVisual({ readTransform, readScene }: DroneVisualProps) {
   }, []);
 
   return (
-    <>
-      <div className="static-drone" aria-hidden="true">
-        <i className="static-drone__arm static-drone__arm--one" />
-        <i className="static-drone__arm static-drone__arm--two" />
-        <i className="static-drone__rotor static-drone__rotor--one" />
-        <i className="static-drone__rotor static-drone__rotor--two" />
-        <i className="static-drone__rotor static-drone__rotor--three" />
-        <i className="static-drone__rotor static-drone__rotor--four" />
-        <b>BD</b>
-      </div>
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label="밝은 테스트 격자 위의 가상 드론. 빨간 선은 기체의 앞방향입니다."
-        aria-describedby="flight-telemetry"
-      >
-        밝은 테스트 격자 위에 가상 드론 한 대가 있습니다.
-      </canvas>
-    </>
+    <canvas
+      ref={canvasRef}
+      role="img"
+      aria-label="고정된 훈련장 바닥 위를 비행하는 가상 드론. 빨간 선은 기체의 앞방향입니다."
+      aria-describedby="flight-telemetry"
+    >
+      고정된 훈련장 바닥 위에 가상 드론 한 대가 있습니다.
+    </canvas>
   );
 }

@@ -94,6 +94,18 @@ test("coordinates the full hands-on tutorial into the training stage", () => {
     0.016,
     "normal",
   );
+  const forwardScene = coordinator.getSnapshot().scene;
+  assert.equal(
+    forwardScene.markers.some((marker) => marker.id === "tutorial-start-pad"),
+    false,
+    "the old start pad must not compete with the current forward target",
+  );
+  assert.equal(
+    forwardScene.markers.find(
+      (marker) => marker.id === "tutorial-forward-marker",
+    )?.label,
+    "전진 목표",
+  );
   coordinator.step(
     flightState({ phase: "FLIGHT", x: 3, y: 1.05, yaw: Math.PI / 2 }),
     true,

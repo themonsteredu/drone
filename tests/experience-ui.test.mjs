@@ -11,6 +11,7 @@ const COMPONENT_FILES = [
   "experience-feedback.tsx",
   "qualification-result.tsx",
   "teacher-test-controls.tsx",
+  "mission-flight-overlay.tsx",
 ];
 
 async function readExperienceFile(name) {
@@ -61,4 +62,22 @@ test("the opening cover uses the real lightweight 3D flight scene", async () => 
   assert.match(cover, /<DroneVisual/);
   assert.match(cover, /readCoverDroneTransform/);
   assert.doesNotMatch(cover, /coverRotorOne|coverDroneArmOne|coverGrid/);
+});
+
+test("disaster search keeps an on-screen mission action fallback", async () => {
+  const [simulator, overlay] = await Promise.all([
+    readFile(
+      new URL("../src/components/drone-simulator.tsx", import.meta.url),
+      "utf8",
+    ),
+    readExperienceFile("mission-flight-overlay.tsx"),
+  ]);
+
+  assert.match(simulator, /missionActionReady=\{controlsEnabled\}/);
+  assert.doesNotMatch(simulator, /준비될 때까지 임무 시간은 멈춥니다/);
+  assert.doesNotMatch(
+    simulator,
+    /activeExperience\.mission\?\.kind === "disaster_search"\s*&&\s*!missionActionReady/,
+  );
+  assert.match(overlay, /화면에서 바로 누르거나 조종기 버튼을 선택 설정/);
 });

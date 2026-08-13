@@ -707,18 +707,9 @@ export function DroneSimulator({
         experienceCoordinator.synchronizeFlightState(reset);
       }
       const activeExperience = experienceCoordinator.getSnapshot();
-      const configuredMissionAction = mappingsRef.current.missionAction;
-      const missionActionReady = Boolean(
-        (configuredMissionAction?.sourceId === mappingSourceId &&
-          configuredMissionAction.buttonId) ||
-          controllerProfile.defaultOperationGestures.missionAction,
-      );
       const interactionReady = !(
         activeExperience.progress.stage === "RESULT" ||
-        activeExperience.certificationFinished ||
-        (activeExperience.progress.stage === "MISSION" &&
-          activeExperience.mission?.kind === "disaster_search" &&
-          !missionActionReady)
+        activeExperience.certificationFinished
       );
       let next = flightController.step(
         elapsed,
@@ -1002,7 +993,7 @@ export function DroneSimulator({
     0,
     Math.min(100, (1 - missionDestinationDistance / missionInitialDistance) * 100),
   );
-  const waitingForMissionAction =
+  const missionActionNeedsMapping =
     domainStage === "MISSION" &&
     experience.mission?.kind === "disaster_search" &&
     !hasMissionActionBinding;
@@ -1017,17 +1008,15 @@ export function DroneSimulator({
               total: requiredMissionTargets.length,
             }
           : undefined;
-  const currentObjective = waitingForMissionAction
-    ? "촬영·확인 버튼을 먼저 설정하세요. 준비될 때까지 임무 시간은 멈춥니다."
+  const currentObjective = missionActionNeedsMapping
+    ? "목표 지점 가까이에서 화면의 ‘촬영·확인’을 누르세요. 조종기 버튼은 선택해서 설정할 수 있습니다."
     : ["TRAINING", "CERTIFICATION", "MISSION"].includes(domainStage) &&
     telemetry.phase === FLIGHT_PHASE.READY
       ? `Mode 2 시동을 건 뒤 ${experience.currentObjective}`
       : experience.currentObjective;
-  const activeWarning = waitingForMissionAction
-    ? "촬영·확인 버튼 설정 필요"
-    : experience.feedback.find(
-        (item) => item.tone === "warning" || item.tone === "emergency",
-      )?.title;
+  const activeWarning = experience.feedback.find(
+    (item) => item.tone === "warning" || item.tone === "emergency",
+  )?.title;
   const showCertificationResult =
     experience.certificationFinished &&
     Boolean(experience.certification) &&
@@ -1268,7 +1257,7 @@ export function DroneSimulator({
                   experience.missionRuntime?.activeWindZoneIds.length,
                 )}
                 nearbyTargetLabel={nearbyMissionTarget?.label}
-                missionActionReady={hasMissionActionBinding && controlsEnabled}
+                missionActionReady={controlsEnabled}
                 onMissionAction={triggerMissionAction}
               />
             ) : null}

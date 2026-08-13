@@ -102,7 +102,7 @@ export function MissionFlightOverlay({
             <span aria-hidden="true">▣</span>
             촬영·확인
           </button>
-          <small>조종기 미션 버튼과 같은 동작</small>
+          <small>화면에서 바로 누르거나 조종기 버튼을 선택 설정할 수 있습니다.</small>
         </div>
       ) : null}
     </div>

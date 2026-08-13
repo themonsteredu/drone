@@ -236,3 +236,146 @@ test("certification requires right yaw and a separate in-flight altitude change"
   assert.equal(coordinator.certificationMetrics.yawTurnCompleted, true);
   assert.equal(coordinator.certificationMetrics.altitudeChangeCompleted, true);
 });
+
+function crossCourseGates(coordinator) {
+  const crossings = [
+    [
+      { x: 0, y: 2.05, z: 4.5 },
+      { x: 0, y: 2.05, z: 5.5 },
+    ],
+    [
+      { x: 2.2, y: 1.75, z: 9.5 },
+      { x: 2.2, y: 1.75, z: 10.5 },
+    ],
+    [
+      { x: 4.5, y: 1.6, z: 14 },
+      { x: 5.5, y: 1.6, z: 14 },
+    ],
+  ];
+  for (const [before, after] of crossings) {
+    coordinator.step(
+      flightState({ phase: "FLIGHT", ...before }),
+      true,
+      0.2,
+      "normal",
+    );
+    coordinator.step(
+      flightState({ phase: "FLIGHT", ...after }),
+      true,
+      0.2,
+      "normal",
+    );
+  }
+}
+
+test("the complete student journey reaches both mission result screens", () => {
+  const initial = flightState();
+  const coordinator = new ExperienceCoordinator(initial);
+
+  coordinator.applyTeacherAction("reset_training", initial);
+  assert.equal(coordinator.consumeFlightResetRequest(), true);
+  coordinator.synchronizeFlightState(initial);
+
+  crossCourseGates(coordinator);
+  coordinator.step(
+    flightState({ phase: "FLIGHT", x: 8, y: 0.2, z: 14 }),
+    true,
+    0.2,
+    "normal",
+  );
+  const trainingLanding = coordinator.step(
+    flightState({ phase: "READY", x: 8, y: 0, z: 14 }),
+    true,
+    0.2,
+    "normal",
+  );
+  assert.equal(coordinator.getSnapshot().progress.stage, "CERTIFICATION");
+  assert.equal(trainingLanding.requestFlightReset, true);
+
+  coordinator.synchronizeFlightState(initial);
+  coordinator.step(flightState({ phase: "ARMED" }), true, 0.2, "normal");
+  coordinator.step(
+    flightState({ phase: "FLIGHT", y: 1 }),
+    true,
+    0.2,
+    "normal",
+  );
+  crossCourseGates(coordinator);
+  coordinator.step(
+    flightState({ phase: "FLIGHT", x: 5.5, y: 1.8, z: 14, yaw: Math.PI / 2 }),
+    true,
+    0.2,
+    "normal",
+  );
+  coordinator.step(
+    flightState({ phase: "FLIGHT", x: 8, y: 0.2, z: 14, yaw: Math.PI / 2 }),
+    true,
+    0.2,
+    "normal",
+  );
+  coordinator.step(
+    flightState({ phase: "READY", x: 8, y: 0, z: 14, yaw: Math.PI / 2 }),
+    true,
+    0.2,
+    "normal",
+  );
+  const qualification = coordinator.getSnapshot();
+  assert.equal(qualification.progress.stage, "QUALIFIED");
+  assert.equal(qualification.certification?.qualified, true);
+
+  coordinator.openMissionSelection();
+  assert.equal(coordinator.getSnapshot().progress.stage, "MISSION_SELECT");
+  coordinator.selectMission("medical-delivery", initial);
+  coordinator.consumeFlightResetRequest();
+  coordinator.synchronizeFlightState(initial);
+  coordinator.step(
+    flightState({ phase: "FLIGHT", x: 8, y: 1, z: 24 }),
+    true,
+    1,
+    "normal",
+  );
+  coordinator.step(
+    flightState({ phase: "READY", x: 8, y: 0, z: 24 }),
+    true,
+    0.2,
+    "normal",
+  );
+  let result = coordinator.getSnapshot();
+  assert.equal(result.progress.stage, "RESULT");
+  assert.equal(result.result?.completed, true);
+  assert.equal(result.mission?.id, "medical-delivery");
+
+  coordinator.openMissionSelection();
+  coordinator.selectMission("disaster-search", initial);
+  coordinator.consumeFlightResetRequest();
+  coordinator.synchronizeFlightState(initial);
+  for (const target of [
+    { x: -5, y: 1.2, z: 8 },
+    { x: 5.5, y: 1.5, z: 13 },
+    { x: -1, y: 1, z: 20 },
+  ]) {
+    coordinator.queueMissionAction();
+    coordinator.step(
+      flightState({ phase: "FLIGHT", ...target }),
+      true,
+      1,
+      "normal",
+    );
+  }
+  coordinator.step(
+    flightState({ phase: "FLIGHT", y: 1 }),
+    true,
+    1,
+    "normal",
+  );
+  coordinator.step(initial, true, 0.2, "normal");
+  result = coordinator.getSnapshot();
+  assert.equal(result.progress.stage, "RESULT");
+  assert.equal(result.result?.completed, true);
+  assert.equal(result.mission?.id, "disaster-search");
+  assert.deepEqual(result.missionRuntime?.foundTargetIds.sort(), [
+    "search-target-1",
+    "search-target-2",
+    "search-target-3",
+  ]);
+});

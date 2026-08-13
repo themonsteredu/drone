@@ -2127,3 +2127,430 @@
     font-size: 12px;
   }
 }
+
+/* Cover refresh: the real lightweight 3D training scene replaces the former
+   CSS illustration, while the input and simulator layers stay unchanged. */
+.cover {
+  background:
+    radial-gradient(circle at 86% 9%, rgba(85, 181, 255, 0.22), transparent 28rem),
+    radial-gradient(circle at 8% 86%, rgba(39, 112, 230, 0.08), transparent 25rem),
+    linear-gradient(145deg, #f8fbff 0%, #eef6ff 56%, #e8f3ff 100%);
+  min-height: 100svh;
+}
+
+.cover::before {
+  background-image: radial-gradient(rgba(33, 91, 157, 0.15) 0.7px, transparent 0.7px);
+  background-size: 18px 18px;
+  content: "";
+  inset: 0;
+  mask-image: linear-gradient(90deg, #000, transparent 42%);
+  opacity: 0.28;
+  pointer-events: none;
+  position: absolute;
+}
+
+.coverHeader {
+  margin: 0 auto;
+  max-width: 1600px;
+  min-height: 92px;
+  padding: 20px clamp(24px, 4.5vw, 72px);
+}
+
+.coverBrand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.coverBrand > span {
+  align-items: center;
+  background: linear-gradient(145deg, #217cff, #114ab7);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(20, 83, 187, 0.23);
+  color: #fff;
+  display: flex;
+  font-size: 21px;
+  font-weight: 800;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.coverBrand strong,
+.coverBrand small {
+  display: block;
+}
+
+.coverBrand strong {
+  color: #102644;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.coverBrand small {
+  color: #718399;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+
+.coverEnvironment span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(148, 177, 208, 0.44);
+  box-shadow: 0 8px 22px rgba(33, 68, 108, 0.05);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 15px;
+}
+
+.coverEnvironment i {
+  background: #2ab776;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(42, 183, 118, 0.12);
+  height: 7px;
+  width: 7px;
+}
+
+.coverHero {
+  align-items: center;
+  gap: clamp(24px, 3.2vw, 58px);
+  grid-template-columns: minmax(430px, 0.82fr) minmax(590px, 1.18fr);
+  margin: 0 auto;
+  max-width: 1600px;
+  padding: 102px clamp(24px, 4.5vw, 72px) 36px;
+}
+
+.coverCopy {
+  max-width: 610px;
+  padding: 28px 0 42px;
+}
+
+.coverCopy > .coverEyebrow {
+  color: #1765d9;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0 0 18px;
+}
+
+.coverCopy h1 {
+  font-size: clamp(50px, 5vw, 76px);
+  line-height: 1.01;
+}
+
+.coverCopy h1 .coverTitleMain {
+  color: #1767db;
+  font-size: clamp(34px, 3.3vw, 51px);
+  margin-bottom: 7px;
+}
+
+.coverCopy > p:not(.coverEyebrow) {
+  color: #52677f;
+  font-size: clamp(15px, 1.35vw, 19px);
+  margin: 25px 0 27px;
+}
+
+.coverStart {
+  border-radius: 17px;
+  box-shadow: 0 18px 40px rgba(24, 92, 205, 0.25);
+  justify-content: flex-start;
+  min-height: 66px;
+  padding-inline: 18px;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.coverStart > i {
+  font-size: 24px;
+  font-style: normal;
+  margin-left: auto;
+}
+
+.coverStart:hover:not(:disabled) {
+  box-shadow: 0 22px 44px rgba(24, 92, 205, 0.3);
+}
+
+.coverConnection {
+  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(174, 199, 225, 0.65);
+  box-shadow: 0 14px 34px rgba(30, 66, 108, 0.08);
+  min-height: 84px;
+}
+
+.coverFeatures {
+  gap: 9px;
+  margin-top: 24px;
+  width: min(100%, 540px);
+}
+
+.coverFeatures li {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(176, 199, 225, 0.48);
+  border-radius: 13px;
+  display: grid;
+  flex: 1;
+  gap: 2px 8px;
+  grid-template-columns: auto 1fr;
+  padding: 10px;
+}
+
+.coverFeatures li:first-child,
+.coverFeatures li:last-child {
+  border-right: 1px solid rgba(176, 199, 225, 0.48);
+  padding: 10px;
+}
+
+.coverFeatures li > span {
+  background: #e7f0ff;
+  color: #1765d9;
+  font-size: 9px;
+  grid-row: 1 / 3;
+  height: 28px;
+  width: 28px;
+}
+
+.coverFeatures strong,
+.coverFeatures small {
+  display: block;
+}
+
+.coverFeatures strong {
+  color: #1a304d;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.coverFeatures small {
+  color: #78899e;
+  font-size: 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.coverBrowserNote {
+  margin-top: 27px;
+}
+
+.coverScene {
+  background: #d9ebf5;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 34px;
+  box-shadow:
+    0 38px 90px rgba(24, 64, 107, 0.19),
+    0 0 0 8px rgba(255, 255, 255, 0.35);
+  height: min(76svh, 760px);
+  min-height: 600px;
+  overflow: hidden;
+  position: relative;
+}
+
+.coverScene::after {
+  background:
+    linear-gradient(180deg, rgba(8, 35, 67, 0.12), transparent 20%, transparent 68%, rgba(7, 30, 59, 0.3)),
+    linear-gradient(90deg, rgba(7, 31, 61, 0.08), transparent 22%, transparent 84%, rgba(7, 31, 61, 0.08));
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.coverSceneCanvas,
+.coverSceneCanvas :global(.drone-three-scene),
+.coverSceneCanvas :global(.drone-visual-fallback),
+.coverSceneCanvas :global(.drone-three-loading) {
+  height: 100%;
+  inset: 0;
+  min-height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
+.coverSceneCanvas canvas {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.coverSceneTopbar {
+  align-items: center;
+  backdrop-filter: blur(16px);
+  background: rgba(8, 35, 66, 0.72);
+  border: 1px solid rgba(176, 216, 247, 0.25);
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  left: 20px;
+  padding: 9px 11px;
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  z-index: 4;
+}
+
+.coverSceneTopbar span {
+  align-items: center;
+  display: flex;
+  font-size: 10px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.coverSceneTopbar span i {
+  background: #3de09c;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px rgba(61, 224, 156, 0.14);
+  height: 7px;
+  width: 7px;
+}
+
+.coverSceneTopbar small {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #d7eaff;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 6px 10px;
+}
+
+.coverSceneCaption {
+  backdrop-filter: blur(17px);
+  background: rgba(8, 34, 64, 0.82);
+  border: 1px solid rgba(170, 214, 248, 0.26);
+  border-radius: 18px;
+  bottom: 20px;
+  color: #fff;
+  left: 20px;
+  max-width: 360px;
+  padding: 15px 17px;
+  position: absolute;
+  z-index: 4;
+}
+
+.coverSceneCaption span,
+.coverSceneCaption strong,
+.coverSceneCaption small {
+  display: block;
+}
+
+.coverSceneCaption span {
+  color: #68baff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.coverSceneCaption strong {
+  font-size: 16px;
+  margin-top: 5px;
+}
+
+.coverSceneCaption small {
+  color: #b7cee2;
+  font-size: 9px;
+  margin-top: 5px;
+}
+
+@media (max-width: 1040px) {
+  .coverHero {
+    gap: 24px;
+    grid-template-columns: minmax(360px, 0.9fr) minmax(460px, 1.1fr);
+    padding-inline: 28px;
+  }
+
+  .coverScene {
+    min-height: 540px;
+  }
+
+  .coverFeatures small {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .coverHeader {
+    min-height: 76px;
+  }
+
+  .coverBrand > span {
+    border-radius: 11px;
+    height: 40px;
+    width: 40px;
+  }
+
+  .coverBrand small,
+  .coverEnvironment span:first-child {
+    display: none;
+  }
+
+  .coverHero {
+    display: flex;
+    flex-direction: column;
+    padding: 100px 16px 24px;
+  }
+
+  .coverCopy {
+    max-width: none;
+    padding: 22px 4px 0;
+    width: 100%;
+  }
+
+  .coverCopy h1 {
+    font-size: clamp(45px, 13vw, 66px);
+  }
+
+  .coverCopy h1 .coverTitleMain {
+    font-size: clamp(30px, 8.5vw, 42px);
+  }
+
+  .coverStart,
+  .coverConnection,
+  .coverFeatures {
+    width: 100%;
+  }
+
+  .coverFeatures li {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .coverFeatures li > span {
+    flex: 0 0 auto;
+  }
+
+  .coverScene {
+    height: 480px;
+    min-height: 480px;
+    width: 100%;
+  }
+}
+
+@media (max-width: 440px) {
+  .coverEnvironment {
+    display: none;
+  }
+
+  .coverConnection {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .coverConnection > i {
+    display: none;
+  }
+
+  .coverScene {
+    border-radius: 24px;
+    height: 420px;
+    min-height: 420px;
+  }
+}

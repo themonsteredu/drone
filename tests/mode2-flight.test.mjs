@@ -80,7 +80,7 @@ const DEFAULT_PREFERENCES = {
 test("Mode 2 arming uses semantic ControllerState and requires a continuous three-second hold", () => {
   const detector = new gestures.Mode2GestureDetector();
   const inwardDown = mappedState(
-    { throttle: -0.9, yaw: 0.82, pitch: -0.88, roll: -0.8 },
+    { throttle: -0.9, yaw: 0.82, pitch: -0.88, roll: 0.8 },
     {},
     // Deliberately contradictory raw data: raw indices must be irrelevant.
     [1, 1, 1, 1],
@@ -118,7 +118,7 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
     throttle: -0.8,
     yaw: 0.8,
     pitch: -0.8,
-    roll: -0.8,
+    roll: 0.8,
   };
   assert.equal(
     gestures.isMode2ArmingGestureActive(mappedState(active)),
@@ -141,7 +141,7 @@ test("Mode 2 arming accepts the measured BYROBOT X-axis endpoint", () => {
       throttle: -magnitude,
       yaw: magnitude,
       pitch: -magnitude,
-      roll: -magnitude,
+      roll: magnitude,
     });
 
   assert.equal(gestures.isMode2ArmingGestureActive(corner(0.57)), false);
@@ -160,7 +160,7 @@ test("a momentary analog wobble does not erase the three-second hold", () => {
     throttle: -0.8,
     yaw: 0.65,
     pitch: -0.8,
-    roll: -0.65,
+    roll: 0.65,
   });
 
   detector.observe(corner, 0);
@@ -181,7 +181,7 @@ test("releasing the sticks beyond the grace period still cancels arming", () => 
     throttle: -0.8,
     yaw: 0.65,
     pitch: -0.8,
-    roll: -0.65,
+    roll: 0.65,
   });
 
   detector.observe(corner, 0);
@@ -268,7 +268,7 @@ test("FlightController drives READY -> ARMING -> ARMED and gates emergency by se
     throttle: -0.9,
     yaw: 0.9,
     pitch: -0.9,
-    roll: -0.9,
+    roll: 0.9,
   });
 
   for (const now of [0, 1000, 2000, 3000]) {
@@ -305,7 +305,7 @@ const ARMING_CORNER = {
   throttle: -0.85,
   yaw: 0.85,
   pitch: -0.85,
-  roll: -0.85,
+  roll: 0.85,
 };
 
 test("a corner held through a live 0x71 stream completes the three-second hold", () => {

@@ -101,8 +101,13 @@ test("the default preset keeps the documented semantic stick directions", () => 
   );
   assert.equal(
     project(raw({ rightX: 1 })).roll,
+    -1,
+    "the classroom controller's raw right-X needs a Roll sign correction",
+  );
+  assert.equal(
+    project(raw({ rightX: -1 })).roll,
     1,
-    "right stick right moves toward the aircraft's right-hand side",
+    "physical right-stick right produces semantic aircraft-right movement",
   );
 });
 
@@ -120,23 +125,19 @@ test("the documented Mode 2 corner reaches the arming gesture through the preset
   );
 });
 
-test("no axis carries a sign inversion", () => {
+test("only the hardware-verified Roll axis carries a sign inversion", () => {
   assert.deepEqual(
     PRESET.bindings.map((binding) => [binding.control, binding.inverted]),
     [
       ["yaw", false],
       ["throttle", false],
-      ["roll", false],
+      ["roll", true],
       ["pitch", false],
     ],
   );
 });
 
-test("both sticks share one left/right polarity", () => {
-  // The two X axes are the same kind of hardware. When their signs disagree,
-  // one of them is wrong; that mismatch hid the roll inversion for a while.
-  assert.equal(
-    Math.sign(project(raw({ leftX: 1 })).yaw),
-    Math.sign(project(raw({ rightX: 1 })).roll),
-  );
+test("the profile preserves yaw while correcting Roll independently", () => {
+  assert.equal(project(raw({ leftX: 1 })).yaw, 1);
+  assert.equal(project(raw({ rightX: 1 })).roll, -1);
 });

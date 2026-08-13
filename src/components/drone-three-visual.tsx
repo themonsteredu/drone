@@ -492,19 +492,26 @@ function addArrow(marker: DroneSceneMarker, group: THREE.Group): void {
 function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
   const radius = marker.radius ?? 2.2;
   const isHospital = marker.kind === "hospital";
-  const height = isHospital ? 4.6 : 3.4 + (marker.id.length % 4) * 0.75;
+  const fallbackHeight = isHospital ? 4.6 : 3.4 + (marker.id.length % 4) * 0.75;
+  const width = Math.max(0.5, marker.size?.x ?? radius * 1.6);
+  const height = Math.max(0.5, marker.size?.y ?? fallbackHeight);
+  const depth = Math.max(0.5, marker.size?.z ?? radius * 1.6);
+  // Box-volume markers arrive at their exact volume center. The clamp keeps
+  // legacy markers above the runway instead of allowing half a mesh to sink.
+  const centerY = Math.max(height / 2 + 0.02, marker.position.y);
   const building = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 1.6, height, radius * 1.6),
+    new THREE.BoxGeometry(width, height, depth),
     meshMaterial(isHospital ? 0xe8edf2 : 0x667b8d, 0.78, 0.04),
   );
-  building.position.set(marker.position.x, height / 2, marker.position.z);
+  building.position.set(marker.position.x, centerY, marker.position.z);
   group.add(building);
 
   const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(radius * 1.72, 0.18, radius * 1.72),
+    new THREE.BoxGeometry(width * 1.06, 0.18, depth * 1.06),
     meshMaterial(isHospital ? 0xf8fbff : 0x354c60, 0.7, 0.08),
   );
-  roof.position.set(marker.position.x, height + 0.09, marker.position.z);
+  const roofY = centerY + height / 2 + 0.09;
+  roof.position.set(marker.position.x, roofY, marker.position.z);
   group.add(roof);
 
   if (isHospital) {
@@ -517,7 +524,7 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
       new THREE.BoxGeometry(radius * 0.25, 0.03, radius * 0.9),
       red,
     );
-    horizontal.position.set(marker.position.x, height + 0.2, marker.position.z);
+    horizontal.position.set(marker.position.x, roofY + 0.11, marker.position.z);
     vertical.position.copy(horizontal.position);
     group.add(horizontal, vertical);
   }
@@ -603,7 +610,7 @@ function markerSignature(scene: DroneScenePresentation): string {
   return scene.markers
     .map(
       (marker) =>
-        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.radius ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}`,
+        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.size?.x ?? ""}:${marker.size?.y ?? ""}:${marker.size?.z ?? ""}:${marker.radius ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}`,
     )
     .join("|");
 }

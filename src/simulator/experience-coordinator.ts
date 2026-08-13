@@ -101,8 +101,22 @@ function volumeCenter(
   if (volume.shape === "sphere") return volume.center;
   return {
     x: (volume.min.x + volume.max.x) / 2,
-    y: volume.max.y,
+    y: (volume.min.y + volume.max.y) / 2,
     z: (volume.min.z + volume.max.z) / 2,
+  };
+}
+
+function volumeSize(
+  volume: MissionDefinition["obstacles"][number]["volume"],
+) {
+  if (volume.shape === "sphere") {
+    const diameter = volume.radius * 2;
+    return { x: diameter, y: diameter, z: diameter };
+  }
+  return {
+    x: volume.max.x - volume.min.x,
+    y: volume.max.y - volume.min.y,
+    z: volume.max.z - volume.min.z,
   };
 }
 
@@ -838,6 +852,7 @@ export class ExperienceCoordinator {
           id: obstacle.id,
           kind: "building",
           position: volumeCenter(obstacle.volume),
+          size: volumeSize(obstacle.volume),
           radius: volumeRadius(obstacle.volume),
           label: obstacle.label,
         });
@@ -863,6 +878,7 @@ export class ExperienceCoordinator {
           id: obstacle.id,
           kind: "building",
           position: volumeCenter(obstacle.volume),
+          size: volumeSize(obstacle.volume),
           radius: volumeRadius(obstacle.volume),
           label: obstacle.label,
         });

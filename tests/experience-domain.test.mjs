@@ -113,23 +113,29 @@ test("training and certification courses expose three ordered gates and precisio
     BASIC_TRAINING_COURSE.landingZone.bands.map((band) => band.score),
     [100, 80, 60, 40],
   );
+  for (const gate of BASIC_TRAINING_COURSE.gates) {
+    assert.ok(
+      gate.center.y > gate.outerRadius,
+      `${gate.id} must be fully above the runway`,
+    );
+  }
 });
 
 test("gate pass requires a forward plane crossing through the clear opening", () => {
   const gate = BASIC_TRAINING_COURSE.gates[0];
   const clear = detectGateIntersection(
-    { x: 0, y: 1.5, z: 4 },
-    { x: 0, y: 1.5, z: 6 },
+    { x: 0, y: gate.center.y, z: 4 },
+    { x: 0, y: gate.center.y, z: 6 },
     gate,
   );
   const backwards = detectGateIntersection(
-    { x: 0, y: 1.5, z: 6 },
-    { x: 0, y: 1.5, z: 4 },
+    { x: 0, y: gate.center.y, z: 6 },
+    { x: 0, y: gate.center.y, z: 4 },
     gate,
   );
   const rim = detectGateIntersection(
-    { x: 1.5, y: 1.5, z: 4 },
-    { x: 1.5, y: 1.5, z: 6 },
+    { x: 1.5, y: gate.center.y, z: 4 },
+    { x: 1.5, y: gate.center.y, z: 6 },
     gate,
   );
   assert.equal(clear.kind, "clear");
@@ -153,8 +159,8 @@ test("ordered tracker ignores a later gate until the expected gate is passed", (
   assert.equal(skipped.snapshot.nextGateIndex, 0);
 
   const first = tracker.update(
-    { x: 0, y: 1.5, z: 4 },
-    { x: 0, y: 1.5, z: 6 },
+    { x: 0, y: BASIC_TRAINING_COURSE.gates[0].center.y, z: 4 },
+    { x: 0, y: BASIC_TRAINING_COURSE.gates[0].center.y, z: 6 },
     2,
   );
   assert.deepEqual(first.snapshot.passedGateIds, ["training-gate-1"]);
@@ -163,14 +169,15 @@ test("ordered tracker ignores a later gate until the expected gate is passed", (
 
 test("ring and obstacle contacts emit debounced collision events", () => {
   const tracker = new CourseTracker(BASIC_TRAINING_COURSE);
+  const gateY = BASIC_TRAINING_COURSE.gates[0].center.y;
   const firstHit = tracker.update(
-    { x: 1.5, y: 1.5, z: 4 },
-    { x: 1.5, y: 1.5, z: 6 },
+    { x: 1.5, y: gateY, z: 4 },
+    { x: 1.5, y: gateY, z: 6 },
     1,
   );
   const repeatedHit = tracker.update(
-    { x: 1.5, y: 1.5, z: 4 },
-    { x: 1.5, y: 1.5, z: 6 },
+    { x: 1.5, y: gateY, z: 4 },
+    { x: 1.5, y: gateY, z: 6 },
     1.2,
   );
   assert.equal(firstHit.events.some((event) => event.type === "collision"), true);

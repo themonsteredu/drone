@@ -54,3 +54,11 @@ test("student experience UI exposes accessible Korean flight guidance", async ()
   assert.match(teacher, /자격시험 바로 시작/);
 });
 
+test("the opening cover uses the real lightweight 3D flight scene", async () => {
+  const cover = await readExperienceFile("experience-cover.tsx");
+  assert.match(cover, /MOAKIT/);
+  assert.match(cover, /미래 직업 체험 · 항공모빌리티/);
+  assert.match(cover, /<DroneVisual/);
+  assert.match(cover, /readCoverDroneTransform/);
+  assert.doesNotMatch(cover, /coverRotorOne|coverDroneArmOne|coverGrid/);
+});

@@ -175,6 +175,19 @@ test("teacher mission shortcut keeps mission action and wind outside flight visu
   assert.equal(wind.windForce.y, 0);
 });
 
+test("box obstacles expose exact above-ground dimensions to the 3D scene", () => {
+  const initial = flightState();
+  const coordinator = new ExperienceCoordinator(initial);
+  coordinator.applyTeacherAction("start_medical_mission", initial);
+
+  const marker = coordinator
+    .getSnapshot()
+    .scene.markers.find((candidate) => candidate.id === "medical-building-1");
+  assert.deepEqual(marker?.position, { x: -4.4, y: 1.4, z: 8 });
+  assert.deepEqual(marker?.size, { x: 3.2, y: 2.8, z: 4 });
+  assert.equal(marker.position.y - marker.size.y / 2, 0);
+});
+
 test("controller loss pauses the exam clock and STOP reset is not a landing", () => {
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);

@@ -44,24 +44,19 @@ export const UNVERIFIED_DEFAULT_OPERATIONS: DefaultControllerOperationGestures =
   });
 
 /**
- * Verified 0x71 raw order: LX, LY, RX, RY, mapping straight through with no
- * sign inversion. Hardware sessions reversed both inversions this preset used
- * to carry, and the resulting all-direct layout finally gives both sticks the
- * same left/right polarity:
- *
- * - left-X -> yaw was inverted, which rotated counter-clockwise on a
- *   stick-right command and left the Mode 2 start gesture unreachable. That
- *   gesture requires semantic yaw >= +threshold, so an inverted left-X fails
- *   it at any threshold.
- * - right-X -> roll was inverted, which moved the aircraft to its left on a
- *   stick-right command.
+ * Verified 0x71 raw order: LX, LY, RX, RY. The current classroom controller
+ * reports right-stick X with the opposite sign to the simulator's semantic
+ * `roll + = aircraft-right` contract, so Roll alone is inverted here. Keeping
+ * the correction at the product profile boundary means FlightPhysics remains
+ * controller-agnostic and future controller profiles can choose their own
+ * polarity.
  *
  * Keep this table in step with tests/axis-preset-contract.test.mjs, which
- * checks the four stick directions and the start gesture together.
+ * checks the four physical stick directions and the Mode 2 start gesture.
  */
 export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
   Object.freeze({
-    id: "byrobot-strict-0x71-mode2-classroom-v2",
+    id: "byrobot-strict-0x71-mode2-classroom-v3",
     label: "BYROBOT 기본 조종 (검증된 0x71 입력)",
     rawAxisOrder: Object.freeze([
       "left-x",
@@ -86,7 +81,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 2,
         physicalAxis: "right-x",
         control: "roll",
-        inverted: false,
+        inverted: true,
       }),
       Object.freeze({
         rawAxisIndex: 3,
@@ -105,7 +100,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
       status: "verified",
       scope: "protocol-and-hardware",
       summary:
-        "The official joystick structure supplies left/right X/Y in an 8-byte payload; hardware sessions confirmed all four axes map directly, so no semantic sign inversion is applied.",
+        "The official joystick structure supplies left/right X/Y in an 8-byte payload; classroom hardware testing confirmed that right-stick X requires a Roll-only sign correction.",
       sourceUrls: Object.freeze([OFFICIAL_BYROBOT_JOYSTICK_STRUCT_URL]),
     }),
   });

@@ -62,6 +62,7 @@ import {
   STUDENT_MISSION_CARDS,
 } from "./experience/mission-selection";
 import { ExperienceFeedback } from "./experience/experience-feedback";
+import { MissionFlightOverlay } from "./experience/mission-flight-overlay";
 import { ExperienceResultScreen } from "./experience/qualification-result";
 import {
   TeacherTestControls,
@@ -81,6 +82,8 @@ interface DroneSimulatorProps {
   axisCount: number;
   onUpdatePreferences: (update: SimulatorPreferencesUpdater) => void;
   onResetPreferences: () => void;
+  startImmediately?: boolean;
+  onRequestConnection?: () => void;
 }
 
 interface StoredButtonMappingsV3 {
@@ -349,6 +352,8 @@ export function DroneSimulator({
   axisCount,
   onUpdatePreferences,
   onResetPreferences,
+  startImmediately = false,
+  onRequestConnection,
 }: DroneSimulatorProps) {
   const [flightController] = useState(() => new FlightController(preferences));
   const [experienceCoordinator] = useState(
@@ -379,6 +384,7 @@ export function DroneSimulator({
     "기능을 선택한 뒤 조종기 버튼을 눌러 설정할 수 있습니다.",
   );
   const [storageReady, setStorageReady] = useState(false);
+  const startedFromCoverRef = useRef(false);
 
   const profileHasDefaultButtons = useMemo(
     () =>
@@ -779,6 +785,13 @@ export function DroneSimulator({
     setExperience(experienceCoordinator.getSnapshot());
   }, [experienceCoordinator]);
 
+  useEffect(() => {
+    if (!startImmediately || startedFromCoverRef.current) return;
+    startedFromCoverRef.current = true;
+    experienceCoordinator.start(controlsEnabled);
+    refreshExperience();
+  }, [controlsEnabled, experienceCoordinator, refreshExperience, startImmediately]);
+
   const startExperience = useCallback(() => {
     experienceCoordinator.start(controlsEnabled);
     refreshExperience();
@@ -842,6 +855,10 @@ export function DroneSimulator({
     },
     [experienceCoordinator, refreshExperience],
   );
+
+  const triggerMissionAction = useCallback(() => {
+    experienceCoordinator.queueMissionAction();
+  }, [experienceCoordinator]);
 
   const startCapture = (action: MappableButtonAction) => {
     if (
@@ -944,6 +961,46 @@ export function DroneSimulator({
   const hasMissionActionBinding = Boolean(
     effectiveMissionActionBinding ||
       controllerProfile.defaultOperationGestures.missionAction,
+  );
+  const missionCollisionCount = experience.missionRuntime?.collisionCount ?? 0;
+  const missionFoundTargetIds = new Set(
+    experience.missionRuntime?.foundTargetIds ?? [],
+  );
+  const nearbyMissionTarget =
+    experience.mission?.kind === "disaster_search"
+      ? experience.mission.targets.find(
+          (target) =>
+            target.action === "mission_action" &&
+            !missionFoundTargetIds.has(target.id) &&
+            Math.hypot(
+              telemetry.position.x - target.position.x,
+              telemetry.position.y - target.position.y,
+              telemetry.position.z - target.position.z,
+            ) <= target.activationRadius,
+        )
+      : undefined;
+  const missionLandingCenter = experience.mission?.landingZone.center;
+  const missionDestinationDistance = missionLandingCenter
+    ? Math.hypot(
+        telemetry.position.x - missionLandingCenter.x,
+        telemetry.position.y - missionLandingCenter.y,
+        telemetry.position.z - missionLandingCenter.z,
+      )
+    : 0;
+  const missionInitialDistance =
+    experience.mission && missionLandingCenter
+      ? Math.max(
+          0.001,
+          Math.hypot(
+            experience.mission.startPosition.x - missionLandingCenter.x,
+            experience.mission.startPosition.y - missionLandingCenter.y,
+            experience.mission.startPosition.z - missionLandingCenter.z,
+          ),
+        )
+      : 1;
+  const missionRoutePercent = Math.max(
+    0,
+    Math.min(100, (1 - missionDestinationDistance / missionInitialDistance) * 100),
   );
   const waitingForMissionAction =
     domainStage === "MISSION" &&
@@ -1111,7 +1168,7 @@ export function DroneSimulator({
       {/* The flight phase is owned by StudentStatusHud's 현재 상태 field. */}
       <div className="simulator-heading experience-simulator-heading">
         <div>
-          <span>실제 조종 행동 중심 체험</span>
+          <span>학생 운항석</span>
           <h2 id="drone-simulator-title">미래항공모빌리티 운항 체험</h2>
         </div>
       </div>
@@ -1174,26 +1231,47 @@ export function DroneSimulator({
 
       {showFlightArea ? (
         <>
-          {domainStage === "TUTORIAL" && experience.tutorialStep ? (
-            <section className="tutorial-flight-guide" aria-live="polite">
-              <div>
-                <span>
-                  조종법 {experience.tutorialStep.order} / 6
-                </span>
-                <h3>{experience.tutorialStep.title}</h3>
-                <p>{experience.tutorialStep.instruction}</p>
-              </div>
-              {experience.tutorialStep.id === "arming" ? (
-                <ArmingHoldProgress
-                  elapsedSeconds={mode2Gesture.armingHeldMs / 1000}
-                  durationSeconds={3}
-                />
-              ) : null}
-            </section>
-          ) : null}
-
           <div className="drone-stage">
             <DroneVisual readTransform={readTransform} readScene={readScene} />
+            {domainStage === "TUTORIAL" && experience.tutorialStep ? (
+              <section className="tutorial-flight-guide" aria-live="polite">
+                <div>
+                  <span>
+                    조종법 {experience.tutorialStep.order} / 6
+                  </span>
+                  <h3>{experience.tutorialStep.title}</h3>
+                  <p>{experience.tutorialStep.instruction}</p>
+                </div>
+                {experience.tutorialStep.id === "arming" ? (
+                  <ArmingHoldProgress
+                    elapsedSeconds={mode2Gesture.armingHeldMs / 1000}
+                    durationSeconds={3}
+                  />
+                ) : null}
+              </section>
+            ) : null}
+            {domainStage === "MISSION" && experience.mission ? (
+              <MissionFlightOverlay
+                kind={experience.mission.kind}
+                title={experience.mission.title}
+                objective={
+                  experience.mission.kind === "medical_delivery"
+                    ? "병원 B 착륙장까지 운송하세요"
+                    : "구조 요청 지점을 찾아 확인하세요"
+                }
+                progressCurrent={experience.missionRuntime?.foundTargetIds.length ?? 0}
+                progressTotal={requiredMissionTargets.length}
+                routePercent={missionRoutePercent}
+                collisionCount={missionCollisionCount}
+                destinationDistanceMeters={missionDestinationDistance}
+                windActive={Boolean(
+                  experience.missionRuntime?.activeWindZoneIds.length,
+                )}
+                nearbyTargetLabel={nearbyMissionTarget?.label}
+                missionActionReady={hasMissionActionBinding && controlsEnabled}
+                onMissionAction={triggerMissionAction}
+              />
+            ) : null}
             {domainStage !== "START" && !controlsEnabled ? (
               <StudentGuideOverlay
                 kind="connect"
@@ -1208,12 +1286,20 @@ export function DroneSimulator({
                     : "처음 한 번만 ‘조종기 처음 연결하기’를 눌러 장치를 선택합니다."
                 }
                 detail="연결이 복구되면 현재 훈련이나 임무에서 그대로 이어집니다. 멈춘 동안 시험 시간과 배터리는 줄지 않습니다."
+                primaryAction={
+                  onRequestConnection && !controllerState.connected
+                    ? {
+                        label: "조종기 처음 연결하기",
+                        onSelect: onRequestConnection,
+                      }
+                    : undefined
+                }
               />
             ) : domainStage === "START" ? (
               <StudentGuideOverlay
                 kind="start"
                 title="미래항공모빌리티 운항 훈련"
-                instruction="실제 바이로봇 조종기를 손에 잡고 시동부터 임무 착륙까지 체험합니다."
+                instruction="조종기를 손에 잡고 시동부터 임무 착륙까지 체험합니다."
                 detail="체험을 시작하면 승인된 USB 조종기를 자동으로 확인합니다."
                 primaryAction={{
                   label: "체험 시작",
@@ -1271,59 +1357,64 @@ export function DroneSimulator({
                 긴급 안전 착륙
               </button>
             ) : null}
+            {!["START", "CONNECTING", "CONTROL_GUIDE"].includes(domainStage) ? (
+              <FlightTrainingHud
+                altitudeMeters={telemetry.position.y}
+                speedMetersPerSecond={horizontalSpeed}
+                batteryPercent={missionBattery}
+                objective={currentObjective}
+                elapsedSeconds={experience.stageElapsedSeconds}
+                remainingSeconds={remainingSeconds}
+                objectiveProgress={objectiveProgress}
+                warning={activeWarning}
+              />
+            ) : null}
           </div>
 
-          {!["START", "CONNECTING", "CONTROL_GUIDE"].includes(domainStage) ? (
-            <FlightTrainingHud
-              altitudeMeters={telemetry.position.y}
-              speedMetersPerSecond={horizontalSpeed}
-              batteryPercent={missionBattery}
-              objective={currentObjective}
-              elapsedSeconds={experience.stageElapsedSeconds}
-              remainingSeconds={remainingSeconds}
-              objectiveProgress={objectiveProgress}
-              warning={activeWarning}
-            />
-          ) : null}
-
-          <div className="flight-action-bar student-flight-actions" aria-label="화면 비행 조작">
-            <button
-              type="button"
-              className="is-start"
-              disabled={!availability.start}
-              onClick={() => dispatchFlightAction("arm")}
-            >
-              시동
-            </button>
-            <button
-              type="button"
-              className="is-takeoff"
-              disabled={!availability.takeoff}
-              onClick={() => dispatchFlightAction("takeoff")}
-            >
-              이륙
-            </button>
-            <button
-              type="button"
-              disabled={!availability.land}
-              onClick={() => dispatchFlightAction("land")}
-            >
-              착륙
-            </button>
-            <button
-              type="button"
-              disabled={!availability.reset}
-              onClick={() => dispatchFlightAction("reset")}
-            >
-              위치 초기화
-            </button>
-            {/* 긴급 안전 착륙 stays on the flight stage overlay only, so the
-                safety action has one location the student can rely on. */}
-            <p className="screen-control-note">
-              <strong>조종기 Mode 2가 기본 조작입니다.</strong>
-              <span>화면 버튼은 연결 점검과 수업 보조용으로 동일한 비행 상태를 실행합니다.</span>
-            </p>
-          </div>
+          <details className="screen-flight-tools">
+            <summary>
+              <span>화면 보조 조작</span>
+              <small>연결 점검과 수업 보조용</small>
+            </summary>
+            <div className="flight-action-bar student-flight-actions" aria-label="화면 비행 조작">
+              <button
+                type="button"
+                className="is-start"
+                disabled={!availability.start}
+                onClick={() => dispatchFlightAction("arm")}
+              >
+                시동
+              </button>
+              <button
+                type="button"
+                className="is-takeoff"
+                disabled={!availability.takeoff}
+                onClick={() => dispatchFlightAction("takeoff")}
+              >
+                이륙
+              </button>
+              <button
+                type="button"
+                disabled={!availability.land}
+                onClick={() => dispatchFlightAction("land")}
+              >
+                착륙
+              </button>
+              <button
+                type="button"
+                disabled={!availability.reset}
+                onClick={() => dispatchFlightAction("reset")}
+              >
+                위치 초기화
+              </button>
+              {/* 긴급 안전 착륙 stays on the flight stage overlay only, so the
+                  safety action has one location the student can rely on. */}
+              <p className="screen-control-note">
+                <strong>조종기 Mode 2가 기본 조작입니다.</strong>
+                <span>화면 버튼은 연결 점검과 수업 보조용으로 동일한 비행 상태를 실행합니다.</span>
+              </p>
+            </div>
+          </details>
         </>
       ) : null}
 

@@ -1,0 +1,17 @@
+S-Core Dream font license notice
+
+Copyright: S-Core
+Official distribution: https://www.s-core.co.kr/company/font/
+
+1. The intellectual property rights of the S-Core fonts distributed through
+   the S-Core website belong to S-Core.
+2. The fonts are provided free of charge to all users, including individuals
+   and companies, and may be redistributed freely.
+3. The fonts may not be modified or sold and must be used in the distributed
+   form.
+4. The fonts may be bundled or redistributed with other software when this
+   copyright notice is included. If including the full notice is difficult,
+   attribution to S-Core is recommended.
+
+This project bundles the unmodified S-Core Dream webfont files and includes
+this notice with the distribution.

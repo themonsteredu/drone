@@ -64,6 +64,7 @@ import {
 import { INPUT_STALE_AFTER_MS } from "../simulator/flight-controller";
 import { ByrobotOperationCapture } from "./byrobot-operation-capture";
 import { DroneSimulator } from "./drone-simulator";
+import { ExperienceCover } from "./experience/experience-cover";
 import { useSimulatorPreferences } from "./use-simulator-preferences";
 
 const EMPTY_AUTOMATIC_CENTERS: readonly number[] = Object.freeze([]);
@@ -327,6 +328,7 @@ function StickField({
 }
 
 export function ControllerDiagnosticsPage() {
+  const [experienceStarted, setExperienceStarted] = useState(false);
   const [manager] = useState(() => new ControllerManager());
   const {
     preferences,
@@ -1342,47 +1344,37 @@ export function ControllerDiagnosticsPage() {
     ["CONTROLLER INPUT ACTIVE", activeDiagnostics.inputActive],
   ];
 
+  const handleStudentConnection = () => {
+    if (serialBusy) return;
+    if (portSelection) {
+      void connectSerial();
+      return;
+    }
+    void selectSerialPort();
+  };
+
+  if (!experienceStarted) {
+    return (
+      <main className="diagnostics-shell controller-app controller-app--cover">
+        <ExperienceCover
+          controllerReady={ready}
+          controllerDetected={simpleConnected || Boolean(portSelection)}
+          connecting={
+            automaticConnectionStatus === "checking" ||
+            automaticConnectionStatus === "connecting"
+          }
+          connectBusy={serialBusy}
+          serialSupported={support.serial}
+          onStart={() => setExperienceStarted(true)}
+          onConnect={handleStudentConnection}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="diagnostics-shell controller-app">
-      <header className="pilot-header">
-        <div className="pilot-brand">
-          <span className="pilot-brand-mark" aria-hidden="true">BD</span>
-          <div>
-            <span>바이로봇 실제 조종기 체험</span>
-            <h1>미래항공모빌리티 운항 훈련</h1>
-          </div>
-        </div>
-        {/* Readiness is owned by ControllerStatusPanel, which states the same
-            value together with the action needed to clear it. */}
-      </header>
-
       <section className="pilot-layout" aria-label="가상 드론 조종 화면">
-        <ControllerStatusPanel
-          serialSupported={support.serial}
-          supportChecked={support.checked}
-          portSelected={Boolean(portSelection)}
-          connected={simpleConnected}
-          serialConnected={serialConnected}
-          stickInputOk={stickInputOk}
-          buttonInputOk={buttonInputOk}
-          mappingComplete={mappingComplete}
-          ready={ready}
-          busy={serialBusy}
-          automaticConnectionStatus={automaticConnectionStatus}
-          centerStatus={
-            activeMethod === "serial"
-              ? centerCalibration.status
-              : selectedGamepad
-                ? "complete"
-                : "idle"
-          }
-          error={uiError}
-          notice={simpleNotice}
-          onSelectPort={selectSerialPort}
-          onConnect={connectSerial}
-          onRecenter={restartAutomaticCentering}
-        />
-
         <DroneSimulator
           controllerState={commonControllerState}
           controlsEnabled={ready}
@@ -1394,14 +1386,56 @@ export function ControllerDiagnosticsPage() {
           axisCount={activeRawAxes.length}
           onUpdatePreferences={updatePreferences}
           onResetPreferences={resetPreferences}
+          startImmediately
+          onRequestConnection={handleStudentConnection}
         />
 
-        <StickInputPanel
-          axes={activeRawAxes}
-          recentButtonNumber={recentButtonNumber}
-          connected={simpleConnected}
-          deadZone={preferences.deadZone}
-        />
+        <div className="student-support-dock" aria-label="수업 보조 도구">
+          <details className="student-tool-drawer" open={!simpleConnected}>
+            <summary>
+              <span>조종기 연결</span>
+              <small>{ready ? "조종 준비 완료" : simpleNotice}</small>
+            </summary>
+            <ControllerStatusPanel
+              serialSupported={support.serial}
+              supportChecked={support.checked}
+              portSelected={Boolean(portSelection)}
+              connected={simpleConnected}
+              serialConnected={serialConnected}
+              stickInputOk={stickInputOk}
+              buttonInputOk={buttonInputOk}
+              mappingComplete={mappingComplete}
+              ready={ready}
+              busy={serialBusy}
+              automaticConnectionStatus={automaticConnectionStatus}
+              centerStatus={
+                activeMethod === "serial"
+                  ? centerCalibration.status
+                  : selectedGamepad
+                    ? "complete"
+                    : "idle"
+              }
+              error={uiError}
+              notice={simpleNotice}
+              onSelectPort={selectSerialPort}
+              onConnect={connectSerial}
+              onRecenter={restartAutomaticCentering}
+            />
+          </details>
+
+          <details className="student-tool-drawer">
+            <summary>
+              <span>조종기 확인</span>
+              <small>스틱과 최근 버튼 입력</small>
+            </summary>
+            <StickInputPanel
+              axes={activeRawAxes}
+              recentButtonNumber={recentButtonNumber}
+              connected={simpleConnected}
+              deadZone={preferences.deadZone}
+            />
+          </details>
+        </div>
       </section>
 
       <details className="developer-details">

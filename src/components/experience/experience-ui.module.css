@@ -1257,3 +1257,873 @@
     animation: none;
   }
 }
+
+/* Student experience redesign ------------------------------------------------ */
+
+.statusHud,
+.guidePanel,
+.experienceNavigation,
+.trainingHud,
+.missionSelection,
+.resultScreen,
+.teacherControls,
+.cover,
+.missionFlightOverlay {
+  font-family: var(--font-s-core-dream), "Noto Sans KR", sans-serif;
+}
+
+.cover {
+  background:
+    radial-gradient(circle at 71% 18%, rgba(255, 255, 255, 0.96), transparent 20rem),
+    linear-gradient(112deg, #ffffff 0%, #f8fbff 43%, #82c8ff 43.2%, #bfe5ff 100%);
+  color: #102544;
+  min-height: 100svh;
+  overflow: hidden;
+  position: relative;
+}
+
+.coverHeader {
+  align-items: center;
+  display: flex;
+  inset: 0 0 auto;
+  justify-content: space-between;
+  min-height: 88px;
+  padding: 20px clamp(24px, 4vw, 64px);
+  position: absolute;
+  z-index: 6;
+}
+
+.coverLogoSpace {
+  height: 48px;
+  width: clamp(140px, 18vw, 260px);
+}
+
+.coverEnvironment {
+  display: flex;
+  gap: 10px;
+}
+
+.coverEnvironment span {
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(157, 187, 218, 0.58);
+  border-radius: 999px;
+  color: #263b58;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 45px;
+  padding: 10px 19px;
+}
+
+.coverHero {
+  display: grid;
+  grid-template-columns: minmax(430px, 0.88fr) minmax(600px, 1.12fr);
+  min-height: 100svh;
+}
+
+.coverCopy {
+  align-self: center;
+  max-width: 620px;
+  padding: 118px 30px 52px clamp(34px, 6vw, 94px);
+  position: relative;
+  z-index: 5;
+}
+
+.coverCopy h1 {
+  color: #0a1d3d;
+  font-size: clamp(50px, 5.2vw, 78px);
+  font-weight: 800;
+  letter-spacing: -0.065em;
+  line-height: 0.99;
+  margin: 0;
+}
+
+.coverCopy h1 span {
+  display: block;
+}
+
+.coverCopy h1 .coverTitleMain {
+  font-size: clamp(42px, 3.75vw, 56px);
+  letter-spacing: -0.075em;
+  margin-bottom: 5px;
+  white-space: nowrap;
+}
+
+.guidePanel h2:focus {
+  outline: none;
+}
+
+.coverCopy > p {
+  color: #51627b;
+  font-size: clamp(16px, 1.45vw, 21px);
+  font-weight: 400;
+  line-height: 1.75;
+  margin: 26px 0 28px;
+}
+
+.coverStart {
+  align-items: center;
+  background: linear-gradient(135deg, #2f7cff, #1558df);
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 18px 36px rgba(34, 101, 222, 0.24);
+  color: #fff;
+  display: flex;
+  font-size: 20px;
+  font-weight: 700;
+  gap: 13px;
+  justify-content: center;
+  min-height: 68px;
+  padding: 15px 28px;
+  width: min(100%, 480px);
+}
+
+.coverStart span {
+  align-items: center;
+  background: #fff;
+  border-radius: 50%;
+  color: #2569ef;
+  display: flex;
+  font-size: 13px;
+  height: 34px;
+  justify-content: center;
+  padding-left: 3px;
+  width: 34px;
+}
+
+.coverStart:hover:not(:disabled) {
+  background: linear-gradient(135deg, #226eff, #0e49c3);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.coverConnection {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #d6e3f0;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(34, 68, 109, 0.08);
+  display: grid;
+  gap: 13px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  margin-top: 14px;
+  min-height: 92px;
+  padding: 14px 15px;
+  width: min(100%, 480px);
+}
+
+.coverControllerIcon {
+  align-items: center;
+  background: #eef4ff;
+  border-radius: 13px;
+  color: #2569ef;
+  display: flex;
+  font-size: 27px;
+  height: 54px;
+  justify-content: center;
+  width: 54px;
+}
+
+.coverConnection strong {
+  display: block;
+  font-size: 15px;
+}
+
+.coverConnection p {
+  color: #718098;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 5px 0 0;
+}
+
+.coverConnection > i {
+  background: #f0a137;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px rgba(240, 161, 55, 0.13);
+  height: 9px;
+  width: 9px;
+}
+
+.coverConnectionReady > i {
+  background: #2db76d;
+  box-shadow: 0 0 0 5px rgba(45, 183, 109, 0.13);
+}
+
+.coverConnection button {
+  background: #edf4ff;
+  border: 1px solid #c9daf4;
+  border-radius: 10px;
+  color: #1753b8;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.coverFeatures {
+  display: flex;
+  gap: 0;
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+.coverFeatures li {
+  align-items: center;
+  border-right: 1px solid #dbe5f0;
+  color: #223752;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  padding: 0 20px;
+}
+
+.coverFeatures li:first-child {
+  padding-left: 0;
+}
+
+.coverFeatures li:last-child {
+  border-right: 0;
+}
+
+.coverFeatures span {
+  align-items: center;
+  background: #edf4ff;
+  border-radius: 50%;
+  color: #2269ef;
+  display: flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.coverBrowserNote {
+  color: #8693a6;
+  display: block;
+  font-size: 11px;
+  margin-top: 58px;
+}
+
+.coverScene {
+  background:
+    linear-gradient(180deg, rgba(65, 162, 241, 0.34), rgba(216, 240, 255, 0.5) 56%, rgba(238, 246, 251, 0.92) 56%);
+  min-height: 100svh;
+  overflow: hidden;
+  position: relative;
+}
+
+.coverSunGlow {
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  filter: blur(20px);
+  height: 320px;
+  position: absolute;
+  right: 11%;
+  top: 3%;
+  width: 320px;
+}
+
+.coverCloudOne,
+.coverCloudTwo {
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  filter: blur(1px);
+  height: 28px;
+  position: absolute;
+  width: 130px;
+}
+
+.coverCloudOne {
+  right: 10%;
+  top: 18%;
+}
+
+.coverCloudTwo {
+  left: 14%;
+  top: 27%;
+  transform: scale(0.7);
+}
+
+.coverFlightPath {
+  border: 2px dashed rgba(255, 255, 255, 0.86);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  border-radius: 50%;
+  height: 170px;
+  left: 16%;
+  position: absolute;
+  top: 17%;
+  transform: rotate(-14deg);
+  width: 52%;
+}
+
+.coverDrone {
+  height: 120px;
+  position: absolute;
+  right: 18%;
+  top: 27%;
+  transform: rotate(-5deg);
+  width: 220px;
+  z-index: 3;
+}
+
+.coverDrone b {
+  background: linear-gradient(150deg, #fff, #b9c9d6);
+  border: 5px solid #253a4f;
+  border-radius: 45% 45% 52% 52%;
+  box-shadow: 0 24px 28px rgba(26, 48, 68, 0.23);
+  height: 54px;
+  left: 79px;
+  position: absolute;
+  top: 37px;
+  width: 65px;
+  z-index: 2;
+}
+
+.coverDroneArmOne,
+.coverDroneArmTwo {
+  background: #263b50;
+  height: 8px;
+  left: 23px;
+  position: absolute;
+  top: 58px;
+  width: 175px;
+}
+
+.coverDroneArmOne { transform: rotate(18deg); }
+.coverDroneArmTwo { transform: rotate(-18deg); }
+
+.coverRotorOne,
+.coverRotorTwo,
+.coverRotorThree,
+.coverRotorFour {
+  border: 5px solid #24394c;
+  border-radius: 50%;
+  height: 45px;
+  position: absolute;
+  width: 69px;
+  z-index: 3;
+}
+
+.coverRotorOne { left: 0; top: 18px; }
+.coverRotorTwo { right: 0; top: 18px; }
+.coverRotorThree { bottom: 4px; left: 0; }
+.coverRotorFour { bottom: 4px; right: 0; }
+
+.coverGrid {
+  background-image:
+    linear-gradient(rgba(80, 137, 181, 0.21) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80, 137, 181, 0.21) 1px, transparent 1px);
+  background-size: 52px 52px;
+  bottom: -25%;
+  height: 68%;
+  left: -20%;
+  position: absolute;
+  transform: perspective(520px) rotateX(57deg);
+  width: 145%;
+}
+
+.coverGate {
+  border: 9px solid #38a4ff;
+  border-radius: 44% 44% 14% 14%;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.9), 0 0 28px rgba(39, 151, 248, 0.35);
+  position: absolute;
+  z-index: 2;
+}
+
+.coverGate::after {
+  background: #dceaf5;
+  bottom: -18px;
+  content: "";
+  height: 22px;
+  left: -12px;
+  position: absolute;
+  right: -12px;
+}
+
+.coverGateOne {
+  bottom: 24%;
+  height: 170px;
+  left: 18%;
+  width: 135px;
+}
+
+.coverGateTwo {
+  bottom: 34%;
+  height: 105px;
+  left: 54%;
+  opacity: 0.8;
+  width: 82px;
+}
+
+.coverGateThree {
+  bottom: 40%;
+  height: 70px;
+  left: 76%;
+  opacity: 0.65;
+  width: 55px;
+}
+
+.coverBuildings {
+  bottom: 31%;
+  display: flex;
+  gap: 18px;
+  left: 6%;
+  opacity: 0.75;
+  position: absolute;
+  right: 3%;
+}
+
+.coverBuildings i {
+  background: linear-gradient(135deg, #e8f1f7, #bdcfdd);
+  border-radius: 12px 12px 0 0;
+  flex: 1;
+  height: 68px;
+}
+
+.coverBuildings i:nth-child(2) { height: 96px; }
+.coverBuildings i:nth-child(3) { height: 52px; }
+.coverBuildings i:nth-child(4) { height: 84px; }
+
+.coverLandingPad {
+  align-items: center;
+  background: #347ce8;
+  border: 9px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  bottom: 8%;
+  box-shadow: 0 12px 35px rgba(26, 88, 177, 0.2);
+  color: #fff;
+  display: flex;
+  font-size: 50px;
+  font-weight: 800;
+  height: 125px;
+  justify-content: center;
+  position: absolute;
+  right: 12%;
+  transform: scaleY(0.48);
+  width: 250px;
+  z-index: 2;
+}
+
+.coverLandingPad span {
+  transform: scaleY(2.08);
+}
+
+.missionFlightOverlay {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+}
+
+.missionBrief {
+  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(209, 225, 240, 0.95);
+  border-radius: 17px;
+  box-shadow: 0 15px 38px rgba(22, 52, 88, 0.16);
+  left: 18px;
+  max-width: 330px;
+  padding: 16px 18px;
+  position: absolute;
+  top: 18px;
+  width: calc(100% - 36px);
+}
+
+.missionBrief::before {
+  background: #286cff;
+  border-radius: 17px 17px 0 0;
+  content: "";
+  height: 5px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+
+.missionBriefSearch::before { background: #ed8a20; }
+
+.missionBrief p {
+  color: #2464da;
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 0 7px;
+}
+
+.missionBriefSearch p { color: #b86009; }
+
+.missionBrief h3 {
+  color: #12213a;
+  font-size: clamp(17px, 2vw, 23px);
+  letter-spacing: -0.035em;
+  line-height: 1.28;
+  margin: 0;
+}
+
+.missionBriefProgress {
+  border-top: 1px solid #dfe7f0;
+  margin-top: 13px;
+  padding-top: 10px;
+}
+
+.missionBriefProgress span {
+  color: #485a72;
+  display: block;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.missionBriefProgress progress {
+  accent-color: #2d72ed;
+  height: 7px;
+  width: 100%;
+}
+
+.missionConditionStack {
+  display: grid;
+  gap: 8px;
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 190px;
+}
+
+.missionConditionStack > div {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.93);
+  border: 1px solid rgba(210, 224, 238, 0.95);
+  border-radius: 13px;
+  box-shadow: 0 9px 24px rgba(27, 56, 89, 0.12);
+  color: #213b61;
+  display: flex;
+  font-size: 12px;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px 13px;
+}
+
+.missionConditionStack > div > span {
+  color: #286cff;
+  font-size: 18px;
+}
+
+.missionConditionStack .missionConditionGood {
+  color: #188451;
+}
+
+.missionConditionStack .missionConditionGood > span {
+  color: #21a566;
+}
+
+.missionConditionProgress {
+  justify-content: space-between;
+}
+
+.missionConditionProgress > span {
+  color: #65748a !important;
+  font-size: 10px !important;
+}
+
+.missionConditionProgress > strong {
+  color: #176bff;
+  font-size: 19px;
+}
+
+.windNotice {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 150, 32, 0.94);
+  border: 1px solid rgba(255, 216, 157, 0.85);
+  border-radius: 14px;
+  box-shadow: 0 13px 30px rgba(154, 83, 9, 0.2);
+  color: #fff;
+  display: flex;
+  gap: 10px;
+  left: 38%;
+  padding: 11px 15px;
+  position: absolute;
+  top: 22%;
+}
+
+.windNotice > span {
+  font-size: 25px;
+}
+
+.windNotice strong,
+.windNotice small {
+  display: block;
+}
+
+.windNotice strong { font-size: 14px; }
+.windNotice small { font-size: 9px; margin-top: 2px; }
+
+.searchActionPrompt {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  background: rgba(12, 42, 78, 0.92);
+  border: 1px solid rgba(111, 185, 255, 0.55);
+  border-radius: 16px;
+  bottom: 120px;
+  box-shadow: 0 16px 38px rgba(8, 31, 60, 0.28);
+  color: #fff;
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  left: 50%;
+  max-width: 590px;
+  padding: 12px 14px 10px 17px;
+  pointer-events: auto;
+  position: absolute;
+  transform: translateX(-50%);
+  width: calc(100% - 36px);
+}
+
+.searchActionPrompt strong,
+.searchActionPrompt small {
+  display: block;
+}
+
+.searchActionPrompt strong { font-size: 14px; }
+.searchActionPrompt small { color: #b9cee5; font-size: 9px; margin-top: 3px; }
+
+.searchActionPrompt button {
+  background: #1970e9;
+  border: 1px solid #56a7ff;
+  border-radius: 11px;
+  color: #fff;
+  font-weight: 700;
+  min-height: 46px;
+  padding: 9px 15px;
+}
+
+.searchActionPrompt > small {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  text-align: center;
+}
+
+:global(.drone-stage) .trainingHud {
+  bottom: 14px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(450px, 1.5fr) minmax(220px, 0.72fr);
+  left: 14px;
+  position: absolute;
+  right: 14px;
+  z-index: 6;
+}
+
+:global(.drone-stage) .telemetryRow,
+:global(.drone-stage) .objectivePanel,
+:global(.drone-stage) .hudWarning {
+  background: rgba(8, 39, 72, 0.9);
+  border-color: rgba(132, 190, 241, 0.35);
+  box-shadow: 0 15px 35px rgba(7, 29, 55, 0.2);
+}
+
+:global(.drone-stage) .telemetryRow {
+  border-radius: 15px;
+  padding: 9px;
+}
+
+:global(.drone-stage) .telemetryRow dl > div {
+  border-right-color: rgba(181, 216, 247, 0.22);
+}
+
+:global(.drone-stage) .telemetryRow dt,
+:global(.drone-stage) .objectivePanel > span {
+  color: #a9c3dc;
+}
+
+:global(.drone-stage) .telemetryRow dd {
+  color: #fff;
+}
+
+:global(.drone-stage) .objectivePanel {
+  border-radius: 15px;
+}
+
+:global(.drone-stage) .objectivePanel strong {
+  color: #fff;
+}
+
+:global(.drone-stage) .objectivePanel small {
+  color: #b7cce0;
+}
+
+:global(.drone-stage) .hudWarning {
+  background: rgba(209, 117, 16, 0.94);
+  border-color: rgba(255, 213, 153, 0.55);
+  color: #fff;
+  grid-column: 2;
+}
+
+@media (max-width: 980px) {
+  .coverHero {
+    grid-template-columns: minmax(370px, 0.95fr) minmax(420px, 1.05fr);
+  }
+
+  .coverCopy {
+    padding-left: 36px;
+  }
+
+  .coverFeatures li {
+    padding-inline: 10px;
+  }
+
+  .missionConditionStack {
+    width: 165px;
+  }
+
+  :global(.drone-stage) .trainingHud {
+    grid-template-columns: 1fr;
+  }
+
+  :global(.drone-stage) .objectivePanel {
+    display: none;
+  }
+
+  :global(.drone-stage) .hudWarning {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .cover {
+    background: #f7fbff;
+    overflow: auto;
+  }
+
+  .coverHeader {
+    min-height: 72px;
+    padding: 14px 16px;
+  }
+
+  .coverLogoSpace {
+    width: 80px;
+  }
+
+  .coverEnvironment span {
+    font-size: 11px;
+    min-height: 39px;
+    padding: 8px 12px;
+  }
+
+  .coverHero {
+    display: block;
+  }
+
+  .coverCopy {
+    max-width: none;
+    padding: 112px 20px 34px;
+  }
+
+  .coverCopy h1 {
+    font-size: clamp(44px, 14vw, 66px);
+  }
+
+  .coverCopy h1 .coverTitleMain {
+    font-size: clamp(33px, 9.6vw, 40px);
+  }
+
+  .coverCopy > p {
+    font-size: 15px;
+  }
+
+  .coverStart,
+  .coverConnection {
+    width: 100%;
+  }
+
+  .coverFeatures {
+    justify-content: space-between;
+  }
+
+  .coverFeatures li {
+    border-right: 0;
+    flex-direction: column;
+    font-size: 11px;
+    padding: 0 4px;
+    text-align: center;
+  }
+
+  .coverBrowserNote {
+    margin-top: 32px;
+  }
+
+  .coverScene {
+    min-height: 420px;
+  }
+
+  .coverDrone {
+    right: 8%;
+    top: 12%;
+    transform: scale(0.72);
+  }
+
+  .coverGateOne {
+    bottom: 18%;
+    left: 12%;
+  }
+
+  .coverLandingPad {
+    bottom: 0;
+    right: 4%;
+  }
+
+  .missionBrief {
+    left: 10px;
+    max-width: 240px;
+    padding: 12px 13px;
+    top: 10px;
+  }
+
+  .missionBrief h3 {
+    font-size: 16px;
+  }
+
+  .missionConditionStack {
+    right: 10px;
+    top: 10px;
+    width: 135px;
+  }
+
+  .missionConditionStack > div {
+    min-height: 39px;
+    padding: 7px 9px;
+  }
+
+  .missionConditionStack > div:nth-child(n + 2) {
+    display: none;
+  }
+
+  .windNotice {
+    left: 10px;
+    top: 185px;
+  }
+
+  .searchActionPrompt {
+    bottom: 130px;
+  }
+
+  :global(.drone-stage) .trainingHud {
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+  }
+
+  :global(.drone-stage) .telemetryRow dl {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  :global(.drone-stage) .telemetryRow dl > div {
+    border-bottom: 0 !important;
+    padding: 2px 6px !important;
+  }
+
+  :global(.drone-stage) .telemetryRow dt {
+    font-size: 8px;
+  }
+
+  :global(.drone-stage) .telemetryRow dd {
+    font-size: 12px;
+  }
+}

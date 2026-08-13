@@ -39,9 +39,8 @@ export function StudentStatusHud({
   return (
     <header className={styles.statusHud}>
       <div className={styles.statusBrand}>
-        <span aria-hidden="true">AM</span>
         <div>
-          <p>학생 조종석</p>
+          <p>운항 훈련</p>
           <h2>{title}</h2>
         </div>
       </div>

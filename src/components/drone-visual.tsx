@@ -39,11 +39,17 @@ function drawDroneScene(
   const w = rect.width;
   const h = rect.height;
   context.clearRect(0, 0, w, h);
+  const isMedicalScene = scene.markers.some(
+    (marker) => marker.kind === "hospital",
+  );
+  const isSearchScene = scene.markers.some(
+    (marker) => marker.kind === "search-target",
+  );
 
   const sky = context.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#cfe8ff");
-  sky.addColorStop(0.5, "#f4f9ff");
-  sky.addColorStop(1, "#dce9f3");
+  sky.addColorStop(0, isSearchScene ? "#92c9f4" : "#91d0ff");
+  sky.addColorStop(0.5, "#eef8ff");
+  sky.addColorStop(1, isSearchScene ? "#d8dfd0" : "#dbeaf3");
   context.fillStyle = sky;
   context.fillRect(0, 0, w, h);
 
@@ -66,6 +72,49 @@ function drawDroneScene(
   context.moveTo(0, h * 0.5);
   context.lineTo(w, h * 0.5);
   context.stroke();
+
+  const horizonY = h * 0.5;
+  context.fillStyle = isSearchScene ? "#8eb17c" : "#a9cba5";
+  context.beginPath();
+  context.moveTo(0, horizonY + 15);
+  for (let x = 0; x <= w; x += Math.max(24, w / 18)) {
+    const rise = Math.sin(x * 0.019) * 9 + Math.sin(x * 0.007) * 17;
+    context.lineTo(x, horizonY - 12 - rise);
+  }
+  context.lineTo(w, horizonY + 54);
+  context.lineTo(0, horizonY + 54);
+  context.closePath();
+  context.fill();
+
+  context.save();
+  context.globalAlpha = 0.72;
+  if (isMedicalScene) {
+    const buildingWidth = Math.max(34, w / 20);
+    for (let index = 0; index < 12; index += 1) {
+      const x = index * (buildingWidth + 10) - 15;
+      const heightVariation = 24 + ((index * 17) % 34);
+      context.fillStyle = index % 3 === 0 ? "#dce9f1" : "#c7d8e4";
+      context.fillRect(
+        x,
+        horizonY - heightVariation,
+        buildingWidth,
+        heightVariation,
+      );
+      context.fillStyle = "rgba(74, 135, 178, 0.2)";
+      context.fillRect(x + 7, horizonY - heightVariation + 10, 5, 5);
+      context.fillRect(x + 18, horizonY - heightVariation + 10, 5, 5);
+    }
+  } else if (isSearchScene) {
+    context.fillStyle = "#c7b28e";
+    for (let index = 0; index < 9; index += 1) {
+      const x = index * (w / 8) - 30;
+      const blockHeight = 17 + ((index * 11) % 22);
+      context.fillRect(x, horizonY - blockHeight, 54, blockHeight);
+      context.strokeStyle = "rgba(91, 76, 55, 0.35)";
+      context.strokeRect(x, horizonY - blockHeight, 54, blockHeight);
+    }
+  }
+  context.restore();
 
   const { position, rotation, tilt, rotorSpeed } = transform;
   const scale = Math.max(22, Math.min(42, w / 20));
@@ -121,6 +170,63 @@ function drawDroneScene(
     );
     context.lineTo(point[0], point[1]);
     context.stroke();
+  }
+
+  const routeMarker = scene.markers
+    .filter(
+      (marker) =>
+        marker.active &&
+        [
+          "gate",
+          "landing-pad",
+          "hospital",
+          "search-target",
+          "arrow",
+        ].includes(marker.kind),
+    )
+    .sort((left, right) => {
+      const leftDistance = Math.hypot(
+        left.position.x - position.x,
+        left.position.z - position.z,
+      );
+      const rightDistance = Math.hypot(
+        right.position.x - position.x,
+        right.position.z - position.z,
+      );
+      return leftDistance - rightDistance;
+    })[0];
+  if (routeMarker) {
+    const routePoint = projectPoint(
+      routeMarker.position.x - cameraX,
+      Math.max(0.03, routeMarker.position.y * 0.25),
+      routeMarker.position.z - cameraZ,
+      originX,
+      originY,
+      scale,
+    );
+    const routeGradient = context.createLinearGradient(
+      originX,
+      originY,
+      routePoint[0],
+      routePoint[1],
+    );
+    routeGradient.addColorStop(0, "rgba(44, 129, 255, 0.08)");
+    routeGradient.addColorStop(1, "rgba(30, 190, 255, 0.44)");
+    context.strokeStyle = routeGradient;
+    context.lineWidth = 16;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(originX, originY + 5);
+    context.lineTo(routePoint[0], routePoint[1]);
+    context.stroke();
+    context.strokeStyle = "rgba(229, 249, 255, 0.92)";
+    context.setLineDash([10, 9]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(originX, originY + 5);
+    context.lineTo(routePoint[0], routePoint[1]);
+    context.stroke();
+    context.setLineDash([]);
   }
 
   for (const marker of scene.markers) {
@@ -194,7 +300,7 @@ function drawDroneScene(
       );
       if (marker.kind === "hospital") {
         context.fillStyle = "#d94040";
-        context.font = "700 18px sans-serif";
+        context.font = '700 18px "S-Core Dream", sans-serif';
         context.textAlign = "center";
         context.fillText("H", point[0], point[1] - buildingHeight * 0.48);
       }
@@ -237,7 +343,7 @@ function drawDroneScene(
 
     if (marker.label && marker.kind !== "building") {
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.font = "700 12px sans-serif";
+      context.font = '700 12px "S-Core Dream", sans-serif';
       context.textAlign = "center";
       context.fillStyle = "#18324a";
       context.fillText(marker.label, point[0], point[1] - radius - 10);
@@ -360,7 +466,18 @@ function drawDroneScene(
   context.stroke();
 
   if (scene.collisionPulse) {
-    context.fillStyle = "rgba(255, 93, 76, 0.13)";
+    const collisionEdge = context.createRadialGradient(
+      w / 2,
+      h / 2,
+      Math.min(w, h) * 0.2,
+      w / 2,
+      h / 2,
+      Math.max(w, h) * 0.72,
+    );
+    collisionEdge.addColorStop(0, "rgba(255, 93, 76, 0)");
+    collisionEdge.addColorStop(0.7, "rgba(255, 93, 76, 0.03)");
+    collisionEdge.addColorStop(1, "rgba(255, 74, 62, 0.34)");
+    context.fillStyle = collisionEdge;
     context.fillRect(0, 0, w, h);
   }
 }

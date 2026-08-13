@@ -448,6 +448,19 @@ function isFlightPhase(value: unknown): value is FlightPhase {
   return Object.values(FLIGHT_PHASE).includes(value as FlightPhase);
 }
 
+/**
+ * Converts internal yaw into the heading a student reads on screen.
+ *
+ * The 3D scene draws the aircraft nose along local +Z and views it from behind,
+ * which puts world +X on the viewer's left. Internal yaw is positive from +Z
+ * toward +X, so a turn the student sees as "right" decreases it. Anything shown
+ * to a student, or judged against a student-facing left/right instruction, must
+ * go through this function so the sign is flipped in exactly one place.
+ */
+export function studentHeadingRadians(yaw: number): number {
+  return -finiteOrZero(yaw);
+}
+
 export function createInitialFlightState(): FlightState {
   return {
     phase: FLIGHT_PHASE.READY,

@@ -77,7 +77,7 @@ const DEFAULT_PREFERENCES = {
   },
 };
 
-test("Mode 2 arming uses semantic ControllerState and requires a continuous three-second hold", () => {
+test("Mode 2 arming uses semantic ControllerState and requires a continuous two-second hold", () => {
   const detector = new gestures.Mode2GestureDetector();
   const inwardDown = mappedState(
     { throttle: -0.9, yaw: 0.82, pitch: -0.88, roll: -0.8 },
@@ -91,11 +91,11 @@ test("Mode 2 arming uses semantic ControllerState and requires a continuous thre
   assert.equal(started.armingStarted, true);
   assert.equal(started.armingProgress, 0);
 
-  const second = detector.observe(inwardDown, 2100);
-  assert.ok(Math.abs(second.armingProgress - 2 / 3) < 1e-12);
+  const second = detector.observe(inwardDown, 1100);
+  assert.ok(Math.abs(second.armingProgress - 0.5) < 1e-12);
   assert.equal(second.armed, false);
 
-  const armed = detector.observe(inwardDown, 3100);
+  const armed = detector.observe(inwardDown, 2100);
   assert.equal(armed.phase, gestures.MODE2_GESTURE_PHASE.ARMED);
   assert.equal(armed.armingProgress, 1);
   assert.equal(armed.armed, true);

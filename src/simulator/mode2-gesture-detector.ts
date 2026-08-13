@@ -51,7 +51,7 @@ export const DEFAULT_MODE2_GESTURE_BINDINGS: Readonly<Mode2GestureBindings> =
 
 export const DEFAULT_MODE2_GESTURE_CONFIG: Readonly<Mode2GestureConfig> =
   Object.freeze({
-    armingHoldMs: 3000,
+    armingHoldMs: 2000,
     // A diagonal stick does not report the same magnitude on both axes on
     // every BYROBOT controller. Keep the vertical threshold deliberate while
     // allowing the shorter horizontal travel observed on real hardware.
@@ -88,7 +88,7 @@ export function resolveMode2GestureConfig(
 ): Mode2GestureConfig {
   const merged = { ...DEFAULT_MODE2_GESTURE_CONFIG, ...overrides };
   return {
-    armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 3000)),
+    armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 2000)),
     armingDownThreshold: clamp(
       Math.abs(finiteOr(merged.armingDownThreshold, 0.4)),
       0.2,
@@ -113,10 +113,15 @@ export function resolveMode2GestureConfig(
 }
 
 /**
- * Mode 2 inward/down start gesture:
- * - left stick about 5 o'clock: throttle down + positive semantic yaw
- * - right stick about 7 o'clock: pitch down + negative semantic roll after
- *   the verified BYROBOT Roll polarity correction
+ * Mode 2 outward/down start gesture, as verified on the classroom controller:
+ * both sticks pulled down and away from each other.
+ *
+ * - left stick about 7 o'clock (down + outward)
+ * - right stick about 5 o'clock (down + outward)
+ *
+ * The semantic conditions below are unchanged; the physical corner they select
+ * is outward because the ControllerProfile inverts both horizontal axes. See
+ * the heading note in `flight-model.ts` for why those inversions exist.
  */
 export function isMode2ArmingGestureActive(
   state: ControllerState | null | undefined,

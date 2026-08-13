@@ -33,7 +33,7 @@ export const MODE2_TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
     id: "arming",
     order: 1,
     title: "시동 걸기",
-    instruction: "양쪽 스틱을 아래쪽 안으로 모아 3초 동안 유지하세요.",
+    instruction: "양쪽 스틱을 아래쪽 바깥으로 벌려 2초 동안 유지하세요.",
     successMessage: "시동 완료",
     criterion: { kind: "flight_event", event: "armed" },
   },
@@ -97,7 +97,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-1",
       label: "첫 번째 링",
       order: 1,
-      center: { x: 0, y: 2.05, z: 5 },
+      center: { x: 0, y: 2.7, z: 5 },
       normal: { x: 0, y: 0, z: 1 },
       innerRadius: 1.6,
       outerRadius: 1.9,
@@ -107,7 +107,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-2",
       label: "두 번째 링",
       order: 2,
-      center: { x: 2.2, y: 1.75, z: 10 },
+      center: { x: 2.2, y: 2.5, z: 10 },
       normal: { x: 0, y: 0, z: 1 },
       innerRadius: 1.3,
       outerRadius: 1.6,
@@ -117,21 +117,24 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-3",
       label: "방향 전환 링",
       order: 3,
-      center: { x: 5, y: 1.6, z: 14 },
+      center: { x: 5, y: 2.35, z: 14 },
       normal: { x: 1, y: 0, z: 0 },
       innerRadius: 1.15,
       outerRadius: 1.45,
       halfThickness: 0.18,
     },
   ],
+  // The pylons mark the corridor rather than block it. They sit well outside
+  // the gate line so a student steering between rings is never squeezed, and
+  // they stop below the raised gates so the course reads as open from behind.
   obstacles: [
     {
       id: "training-pylon-left",
       label: "왼쪽 안전 표지",
       volume: {
         shape: "box",
-        min: { x: -2.2, y: 0, z: 7.2 },
-        max: { x: -1.75, y: 24, z: 7.65 },
+        min: { x: -5.4, y: 0, z: 7.2 },
+        max: { x: -4.85, y: 6.5, z: 7.75 },
       },
     },
     {
@@ -139,8 +142,8 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       label: "오른쪽 안전 표지",
       volume: {
         shape: "box",
-        min: { x: 4.2, y: 0, z: 7.2 },
-        max: { x: 4.65, y: 24, z: 7.65 },
+        min: { x: 7.4, y: 0, z: 7.2 },
+        max: { x: 7.95, y: 6.5, z: 7.75 },
       },
     },
   ],

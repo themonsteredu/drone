@@ -100,7 +100,7 @@ test("tutorial is an ordered six-step Mode 2 flight activity, not a checklist", 
     MODE2_TUTORIAL_STEPS.map((step) => step.id),
     ["arming", "takeoff", "yaw-right", "forward", "roll-right", "landing"],
   );
-  assert.match(MODE2_TUTORIAL_STEPS[0].instruction, /3초/);
+  assert.match(MODE2_TUTORIAL_STEPS[0].instruction, /벌려 2초/);
   assert.equal(MODE2_TUTORIAL_STEPS[1].criterion.kind, "minimum_altitude");
   assert.equal(MODE2_TUTORIAL_STEPS[2].criterion.direction, "right");
 });
@@ -125,7 +125,13 @@ test("training and certification courses expose three ordered gates and precisio
       "box",
       `${obstacle.id} must expose its exact height to the scene`,
     );
-    assert.equal(obstacle.volume.max.y - obstacle.volume.min.y, 24);
+    const height = obstacle.volume.max.y - obstacle.volume.min.y;
+    const tallestGate = Math.max(
+      ...BASIC_TRAINING_COURSE.gates.map((gate) => gate.center.y),
+    );
+    // Tall enough to read as a course marker from behind the aircraft, and
+    // short enough that a student can still see the ring line above it.
+    assert.ok(height > tallestGate && height < tallestGate * 4);
   }
 });
 
@@ -222,8 +228,8 @@ test("ring and obstacle contacts emit debounced collision events", () => {
   const obstacle = BASIC_TRAINING_COURSE.obstacles[0];
   assert.equal(
     segmentIntersectsObstacle(
-      { x: -3, y: 1, z: 7.4 },
-      { x: -1.5, y: 1, z: 7.4 },
+      { x: -6.2, y: 1, z: 7.4 },
+      { x: -4.6, y: 1, z: 7.4 },
       obstacle,
     ),
     true,

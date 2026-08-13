@@ -1197,7 +1197,7 @@ export function ControllerDiagnosticsPage() {
   const serialConnected = Boolean(serialSnapshot?.isOpen);
   const simpleNotice = ready
     ? activeMethod !== "serial" || centerCalibration.status === "complete"
-      ? "조종 준비 완료. 양쪽 스틱을 아래쪽 안으로 모아 시동을 걸어 주세요."
+      ? "조종 준비 완료. 양쪽 스틱을 아래쪽 바깥으로 벌려 시동을 걸어 주세요."
       : "스틱을 중앙에 놓아 주세요. 자동으로 중심을 맞추고 있습니다."
     : activeMethod === "serial" &&
         controllerInput?.evidence.joystickDecoded &&

@@ -47,12 +47,24 @@ test("student experience UI exposes accessible Korean flight guidance", async ()
   assert.match(hud, /배터리/);
   assert.match(missions, /응급 의약품 운송/);
   assert.match(missions, /재난지역 탐색/);
+  assert.match(missions, /missionCardVisual/);
   assert.match(feedback, /role=\{urgent \? "alert" : "status"\}/);
   assert.match(result, /운항 자격 획득/);
   assert.match(result, /항공모빌리티 운항 결과/);
   assert.match(teacher, /<details/);
   assert.match(teacher, /훈련 단계 초기화/);
   assert.match(teacher, /자격시험 바로 시작/);
+});
+
+test("mission UI requires an operational decision before hands-on flight", async () => {
+  const overlay = await readExperienceFile("mission-flight-overlay.tsx");
+  assert.match(overlay, /MISSION CONTROL · 운항 요청 접수/);
+  assert.match(overlay, /어떤 항로로 배송할까요/);
+  assert.match(overlay, /의약품 인수하고 운항 시작/);
+  assert.match(overlay, /병원 B 도착/);
+  assert.match(overlay, /의약품 인계 완료/);
+  assert.match(overlay, /수색 계획 승인하고 운항 시작/);
+  assert.match(overlay, /촬영·위치 전송/);
 });
 
 test("the opening cover uses the real lightweight 3D flight scene", async () => {

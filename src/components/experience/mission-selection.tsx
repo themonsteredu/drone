@@ -58,6 +58,17 @@ export function MissionSelection({
               <div className={styles.missionNumber} aria-hidden="true">
                 {String(mission.number).padStart(2, "0")}
               </div>
+              <div
+                className={`${styles.missionCardVisual} ${mission.accent === "medical" ? styles.missionCardVisualMedical : styles.missionCardVisualSearch}`}
+                aria-hidden="true"
+              >
+                <span className={styles.missionVisualSky} />
+                <span className={styles.missionVisualRoute} />
+                <span className={styles.missionVisualDrone}>◆</span>
+                <span className={styles.missionVisualOrigin}>{mission.accent === "medical" ? "A" : "본부"}</span>
+                <span className={styles.missionVisualTarget}>{mission.accent === "medical" ? "H" : "01"}</span>
+                <strong>{mission.accent === "medical" ? "긴급 운송" : "현장 수색"}</strong>
+              </div>
               <p>체험 임무 {mission.number}</p>
               <h3>{mission.title}</h3>
               <span>{mission.situation}</span>

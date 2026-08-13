@@ -13,9 +13,11 @@ import {
   calculateMissionResult,
   createInitialExperienceProgress,
   createMissionRuntimeState,
+  confirmMissionPreflight,
   createTutorialRuntimeState,
   getMissionDefinition,
   reduceExperienceProgress,
+  selectMissionPlan,
   stepMission,
   stepTutorial,
   type CertificationAttemptMetrics,
@@ -254,6 +256,25 @@ export class ExperienceCoordinator {
 
   queueMissionAction(): void {
     this.missionActionQueued = true;
+  }
+
+  chooseMissionPlan(planId: string): void {
+    if (!this.mission || !this.missionRuntime) return;
+    this.missionRuntime = selectMissionPlan(this.mission, this.missionRuntime, planId);
+  }
+
+  confirmMissionDispatch(): void {
+    if (!this.mission || !this.missionRuntime) return;
+    const next = confirmMissionPreflight(this.mission, this.missionRuntime);
+    if (next === this.missionRuntime) return;
+    this.missionRuntime = next;
+    this.resetStageClock();
+    this.pushFeedback(
+      "success",
+      this.mission.kind === "medical_delivery" ? "의약품 인수 완료" : "수색 계획 승인",
+      "시동을 걸고 지정된 운항 계획에 따라 출발하세요.",
+      5,
+    );
   }
 
   consumeFlightResetRequest(): boolean {
@@ -761,8 +782,15 @@ export class ExperienceCoordinator {
     }
     if (this.progress.stage === "MISSION" && this.mission && this.missionRuntime) {
       if (this.mission.kind === "medical_delivery") {
-        return "강풍과 건물을 피해 병원 B 착륙장에 착륙하세요.";
+        if (!this.missionRuntime.selectedPlanId) return "운항 경로를 선택하세요.";
+        if (!this.missionRuntime.preflightConfirmed) return "의약품과 출발 전 점검을 확인하세요.";
+        if (this.missionRuntime.operationPhase === "HANDOVER") {
+          return "병원 B 의료진에게 의약품을 인계하세요.";
+        }
+        return "선택한 비행 통로를 유지하며 병원 B로 운항하세요.";
       }
+      if (!this.missionRuntime.selectedPlanId) return "수색 비행 계획을 선택하세요.";
+      if (!this.missionRuntime.preflightConfirmed) return "수색 순서와 장비 점검을 확인하세요.";
       const total = this.mission.targets.filter((target) => target.required).length;
       const found = this.missionRuntime.foundTargetIds.length;
       return found < total
@@ -867,6 +895,20 @@ export class ExperienceCoordinator {
         active: this.courseSnapshot.nextGateIndex >= course.gates.length,
       });
     } else if (stage === "MISSION" && this.mission && this.missionRuntime) {
+      const selectedPlan = this.mission.plans.find(
+        (plan) => plan.id === this.missionRuntime?.selectedPlanId,
+      );
+      if (selectedPlan) {
+        markers.push({
+          id: `${this.mission.id}-selected-corridor`,
+          kind: "flight-corridor",
+          position: selectedPlan.waypoints[0] ?? this.mission.startPosition,
+          path: selectedPlan.waypoints,
+          radius: selectedPlan.corridorRadius,
+          label: selectedPlan.label,
+          active: this.missionRuntime.preflightConfirmed,
+        });
+      }
       markers.push({
         id: `${this.mission.id}-start`,
         kind: this.mission.kind === "medical_delivery" ? "hospital" : "start-pad",

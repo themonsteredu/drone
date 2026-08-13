@@ -709,7 +709,9 @@ export function DroneSimulator({
       const activeExperience = experienceCoordinator.getSnapshot();
       const interactionReady = !(
         activeExperience.progress.stage === "RESULT" ||
-        activeExperience.certificationFinished
+        activeExperience.certificationFinished ||
+        (activeExperience.progress.stage === "MISSION" &&
+          activeExperience.missionRuntime?.preflightConfirmed === false)
       );
       let next = flightController.step(
         elapsed,
@@ -850,6 +852,16 @@ export function DroneSimulator({
   const triggerMissionAction = useCallback(() => {
     experienceCoordinator.queueMissionAction();
   }, [experienceCoordinator]);
+
+  const chooseMissionPlan = useCallback((planId: string) => {
+    experienceCoordinator.chooseMissionPlan(planId);
+    refreshExperience();
+  }, [experienceCoordinator, refreshExperience]);
+
+  const confirmMissionDispatch = useCallback(() => {
+    experienceCoordinator.confirmMissionDispatch();
+    refreshExperience();
+  }, [experienceCoordinator, refreshExperience]);
 
   const startCapture = (action: MappableButtonAction) => {
     if (
@@ -1011,6 +1023,7 @@ export function DroneSimulator({
   const currentObjective = missionActionNeedsMapping
     ? "목표 지점 가까이에서 화면의 ‘촬영·확인’을 누르세요. 조종기 버튼은 선택해서 설정할 수 있습니다."
     : ["TRAINING", "CERTIFICATION", "MISSION"].includes(domainStage) &&
+    (domainStage !== "MISSION" || experience.missionRuntime?.preflightConfirmed) &&
     telemetry.phase === FLIGHT_PHASE.READY
       ? `Mode 2 시동을 건 뒤 ${experience.currentObjective}`
       : experience.currentObjective;
@@ -1078,7 +1091,10 @@ export function DroneSimulator({
     ? [
         {
           id: "safety",
-          label: "안전 운항",
+          label:
+            experience.mission?.kind === "medical_delivery"
+              ? "항로·화물 안전"
+              : "현장 안전 운항",
           score: experience.result.safety.score,
           maximum: 100,
           rating: experience.result.safety.stars,
@@ -1099,7 +1115,10 @@ export function DroneSimulator({
         },
         {
           id: "objective",
-          label: "임무 수행",
+          label:
+            experience.mission?.kind === "medical_delivery"
+              ? "의약품 인계"
+              : "구조 위치 보고",
           score: experience.result.objective.score,
           maximum: 100,
           rating: experience.result.objective.stars,
@@ -1243,11 +1262,16 @@ export function DroneSimulator({
               <MissionFlightOverlay
                 kind={experience.mission.kind}
                 title={experience.mission.title}
+                roleTitle={experience.mission.roleTitle}
+                dispatchLabel={experience.mission.dispatchLabel}
                 objective={
-                  experience.mission.kind === "medical_delivery"
-                    ? "병원 B 착륙장까지 운송하세요"
-                    : "구조 요청 지점을 찾아 확인하세요"
+                  experience.currentObjective
                 }
+                plans={experience.mission.plans}
+                checklist={experience.mission.preflightChecklist}
+                payload={experience.mission.payload}
+                operationPhase={experience.missionRuntime?.operationPhase ?? "BRIEFING"}
+                selectedPlanId={experience.missionRuntime?.selectedPlanId}
                 progressCurrent={experience.missionRuntime?.foundTargetIds.length ?? 0}
                 progressTotal={requiredMissionTargets.length}
                 routePercent={missionRoutePercent}
@@ -1256,8 +1280,13 @@ export function DroneSimulator({
                 windActive={Boolean(
                   experience.missionRuntime?.activeWindZoneIds.length,
                 )}
+                payloadIntegrityPercent={experience.missionRuntime?.payloadIntegrityPercent ?? 100}
+                corridorViolationCount={experience.missionRuntime?.corridorViolationCount ?? 0}
+                outsideSelectedCorridor={experience.missionRuntime?.outsideSelectedCorridor ?? false}
                 nearbyTargetLabel={nearbyMissionTarget?.label}
                 missionActionReady={controlsEnabled}
+                onSelectPlan={chooseMissionPlan}
+                onConfirmDispatch={confirmMissionDispatch}
                 onMissionAction={triggerMissionAction}
               />
             ) : null}

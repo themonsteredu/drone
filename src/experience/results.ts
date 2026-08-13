@@ -105,15 +105,19 @@ export function calculateMissionResult(
 
   const requiredTargets = mission.targets.filter((target) => target.required);
   const completedTargets = requiredTargets.filter((target) => state.foundTargetIds.includes(target.id));
-  const objectiveScore = requiredTargets.length
+  const targetObjectiveScore = requiredTargets.length
     ? (completedTargets.length / requiredTargets.length) * 100
     : state.status === "COMPLETED"
       ? 100
       : 0;
+  const objectiveScore = mission.kind === "medical_delivery"
+    ? (targetObjectiveScore * 0.55 + state.payloadIntegrityPercent * 0.3 + (state.handoverCompleted ? 15 : 0))
+    : targetObjectiveScore;
   const safetyScore =
     100 -
     state.collisionCount * mission.scoringRules.collisionPenaltyPercent -
-    state.emergencyActivations * mission.scoringRules.emergencyPenaltyPercent;
+    state.emergencyActivations * mission.scoringRules.emergencyPenaltyPercent -
+    state.corridorViolationCount * 4;
   const stabilityScore = state.stabilitySampleCount
     ? (state.stabilitySampleTotal / state.stabilitySampleCount) * 100
     : 0;
@@ -156,7 +160,8 @@ export function calculateMissionResult(
     profileLabel: profile.label,
     profileReason: profile.reason,
     careerMessage:
-      "항공모빌리티 운항 전문가는 기체 조종뿐 아니라 안전, 경로, 환경 변화와 임무 성공을 함께 판단합니다.",
+      mission.kind === "medical_delivery"
+        ? "도심 항공물류 운항 담당자는 환자에게 필요한 물품이 제때 도착하도록 항로, 기상, 화물 상태와 착륙 안전을 함께 판단합니다."
+        : "재난 항공수색 운항 담당자는 현장 위험을 살피며 수색 순서와 비행 경로를 정하고, 정확한 위치 정보를 구조팀에 전달합니다.",
   };
 }
-

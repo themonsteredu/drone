@@ -66,6 +66,7 @@ const {
   calculateCertificationScore,
   calculateMissionResult,
   combineWindForces,
+  confirmMissionPreflight,
   createBatteryState,
   createInitialExperienceProgress,
   createMissionRuntimeState,
@@ -73,11 +74,18 @@ const {
   findNearbyMissionTarget,
   isPointInsideGateTrigger,
   reduceExperienceProgress,
+  selectMissionPlan,
   scoreToStars,
   segmentIntersectsObstacle,
   stepBattery,
   stepMission,
 } = experience;
+
+function createPreparedMissionState(mission) {
+  const initial = createMissionRuntimeState(mission);
+  const selected = selectMissionPlan(mission, initial, mission.plans[0].id);
+  return confirmMissionPreflight(mission, selected);
+}
 
 function stepMissionAt(mission, state, position, options = {}) {
   return stepMission(mission, state, {
@@ -336,6 +344,9 @@ test("both missions are data definitions and contain no controller button values
     "disaster-search",
   ]);
   assert.equal(MEDICAL_DELIVERY_MISSION.windZones.length, 1);
+  assert.equal(MEDICAL_DELIVERY_MISSION.plans.length, 2);
+  assert.equal(MEDICAL_DELIVERY_MISSION.payload.label, "응급 의약품 보관함");
+  assert.equal(DISASTER_SEARCH_MISSION.plans.length, 2);
   assert.equal(DISASTER_SEARCH_MISSION.targets.length, 3);
   assert.doesNotMatch(JSON.stringify(MISSION_DEFINITIONS), /buttonId|buttonBit|0x70/);
 });
@@ -357,7 +368,7 @@ test("wind force is deterministic and zero outside its trigger volume", () => {
 });
 
 test("mission runtime emits wind enter and exit events", () => {
-  let state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+  let state = createPreparedMissionState(MEDICAL_DELIVERY_MISSION);
   const entered = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, { x: 0, y: 1, z: 12 });
   state = entered.state;
   assert.equal(entered.events.some((event) => event.type === "windEntered"), true);
@@ -369,7 +380,7 @@ test("mission obstacle collision fires on entry, not repeatedly while stationary
   const obstacle = MEDICAL_DELIVERY_MISSION.obstacles[0];
   const inside = { x: -3.4, y: 1, z: 7 };
   const outside = { x: 0, y: 1, z: 7 };
-  let state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+  let state = createPreparedMissionState(MEDICAL_DELIVERY_MISSION);
 
   const entered = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, inside);
   state = entered.state;
@@ -378,6 +389,7 @@ test("mission obstacle collision fires on entry, not repeatedly while stationary
     1,
   );
   assert.deepEqual(state.activeObstacleIds, [obstacle.id]);
+  assert.equal(state.payloadIntegrityPercent, 85);
 
   const stationary = stepMissionAt(
     MEDICAL_DELIVERY_MISSION,
@@ -402,8 +414,24 @@ test("mission obstacle collision fires on entry, not repeatedly while stationary
   );
 });
 
+test("selected air corridor records only a new route departure edge", () => {
+  let state = createPreparedMissionState(MEDICAL_DELIVERY_MISSION);
+  const outside = { x: 18, y: 2, z: 10 };
+  state = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, outside).state;
+  assert.equal(state.outsideSelectedCorridor, true);
+  assert.equal(state.corridorViolationCount, 1);
+  state = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, outside).state;
+  assert.equal(state.corridorViolationCount, 1);
+  state = stepMissionAt(
+    MEDICAL_DELIVERY_MISSION,
+    state,
+    { x: 4.8, y: 2, z: 7 },
+  ).state;
+  assert.equal(state.outsideSelectedCorridor, false);
+});
+
 test("grounded mission observation never emits a collision", () => {
-  const state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+  const state = createPreparedMissionState(MEDICAL_DELIVERY_MISSION);
   const grounded = stepMissionAt(
     MEDICAL_DELIVERY_MISSION,
     state,
@@ -416,8 +444,13 @@ test("grounded mission observation never emits a collision", () => {
   );
 });
 
-test("medical delivery completes only on a successful hospital B landing", () => {
-  let state = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+test("medical delivery requires route planning, cargo handover and a successful hospital B landing", () => {
+  const unprepared = createMissionRuntimeState(MEDICAL_DELIVERY_MISSION);
+  const paused = stepMissionAt(MEDICAL_DELIVERY_MISSION, unprepared, { x: 0, y: 1, z: 12 });
+  assert.equal(paused.state.elapsedSeconds, 0);
+  assert.equal(paused.windForce.x, 0);
+
+  let state = createPreparedMissionState(MEDICAL_DELIVERY_MISSION);
   const offPad = stepMissionAt(MEDICAL_DELIVERY_MISSION, state, { x: 4, y: 0, z: 24 }, { landed: true });
   assert.equal(offPad.state.status, "ACTIVE");
   assert.equal(offPad.state.landingAssessment.score, 0);
@@ -429,12 +462,21 @@ test("medical delivery completes only on a successful hospital B landing", () =>
     { x: 8.1, y: 0, z: 24 },
     { landed: true },
   );
-  assert.equal(delivered.state.status, "COMPLETED");
-  assert.equal(delivered.state.foundTargetIds.includes("hospital-b"), true);
-  assert.equal(delivered.events.some((event) => event.type === "missionCompleted"), true);
+  assert.equal(delivered.state.status, "ACTIVE");
+  assert.equal(delivered.state.operationPhase, "HANDOVER");
+  const handedOver = stepMissionAt(
+    MEDICAL_DELIVERY_MISSION,
+    delivered.state,
+    { x: 8.1, y: 0, z: 24 },
+    { missionActionPressed: true },
+  );
+  assert.equal(handedOver.state.status, "COMPLETED");
+  assert.equal(handedOver.state.handoverCompleted, true);
+  assert.equal(handedOver.state.foundTargetIds.includes("hospital-b"), true);
+  assert.equal(handedOver.events.some((event) => event.type === "missionCompleted"), true);
 
   const deadlineState = {
-    ...createMissionRuntimeState(MEDICAL_DELIVERY_MISSION),
+    ...createPreparedMissionState(MEDICAL_DELIVERY_MISSION),
     elapsedSeconds: MEDICAL_DELIVERY_MISSION.timeLimitSeconds - 0.1,
   };
   const lateLanding = stepMissionAt(
@@ -451,7 +493,7 @@ test("medical delivery completes only on a successful hospital B landing", () =>
 });
 
 test("mission action emits a common event and finds a nearby search target once", () => {
-  let state = createMissionRuntimeState(DISASTER_SEARCH_MISSION);
+  let state = createPreparedMissionState(DISASTER_SEARCH_MISSION);
   const target = DISASTER_SEARCH_MISSION.targets[0];
   assert.equal(findNearbyMissionTarget(DISASTER_SEARCH_MISSION, target.position)?.id, target.id);
   const found = stepMissionAt(DISASTER_SEARCH_MISSION, state, target.position, {
@@ -470,7 +512,7 @@ test("mission action emits a common event and finds a nearby search target once"
 });
 
 test("disaster search requires all three targets and a return landing", () => {
-  let state = createMissionRuntimeState(DISASTER_SEARCH_MISSION);
+  let state = createPreparedMissionState(DISASTER_SEARCH_MISSION);
   for (const target of DISASTER_SEARCH_MISSION.targets) {
     state = stepMissionAt(DISASTER_SEARCH_MISSION, state, target.position, {
       missionActionPressed: true,
@@ -490,7 +532,7 @@ test("disaster search requires all three targets and a return landing", () => {
 });
 
 test("result calculation returns category stars, total score and activity-based profile", () => {
-  let state = createMissionRuntimeState(DISASTER_SEARCH_MISSION);
+  let state = createPreparedMissionState(DISASTER_SEARCH_MISSION);
   for (const target of DISASTER_SEARCH_MISSION.targets) {
     state = stepMissionAt(DISASTER_SEARCH_MISSION, state, target.position, {
       missionActionPressed: true,
@@ -509,7 +551,7 @@ test("result calculation returns category stars, total score and activity-based 
   assert.equal(result.landing.score, 100);
   assert.equal(result.profileLabel, "탐색 전문형");
   assert.ok(result.totalScore >= 90);
-  assert.match(result.careerMessage, /안전.*경로.*환경 변화.*임무 성공/);
+  assert.match(result.careerMessage, /현장 위험.*수색 순서.*비행 경로.*구조팀/);
   assert.equal(scoreToStars(89), 4);
   assert.equal(scoreToStars(90), 5);
 });

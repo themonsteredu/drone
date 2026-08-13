@@ -704,6 +704,105 @@
   top: 15px;
 }
 
+.missionCardVisual {
+  background: linear-gradient(145deg, #dff3ff 0%, #f7fbff 58%, #dce8f2 100%);
+  border: 1px solid #d8e5f1;
+  border-radius: 14px;
+  height: 132px;
+  margin: 4px 0 17px;
+  overflow: hidden;
+  position: relative;
+}
+
+.missionCardVisual::before,
+.missionCardVisual::after {
+  background: #d3dde7;
+  bottom: 0;
+  content: "";
+  position: absolute;
+  width: 38px;
+}
+
+.missionCardVisual::before { height: 55px; left: 17%; }
+.missionCardVisual::after { height: 76px; right: 12%; }
+.missionCardVisualSearch::before { background: #b8a28e; height: 38px; transform: skewX(-18deg); }
+.missionCardVisualSearch::after { background: #8f9b9f; height: 49px; transform: skewX(13deg); }
+
+.missionVisualSky {
+  background: radial-gradient(circle, rgba(255,255,255,0.96) 0 15%, rgba(255,255,255,0.25) 38%, transparent 70%);
+  height: 120px;
+  position: absolute;
+  right: -10px;
+  top: -42px;
+  width: 120px;
+}
+
+.missionVisualRoute {
+  border: 3px dashed #2f7ef2;
+  border-bottom: 0;
+  border-left-color: transparent;
+  border-radius: 50% 50% 0 0;
+  height: 48px;
+  left: 22%;
+  position: absolute;
+  top: 40px;
+  transform: rotate(-8deg);
+  width: 56%;
+}
+
+.missionCardVisualSearch .missionVisualRoute { border-color: #e88c2d; border-bottom: 0; border-left-color: transparent; }
+
+.missionVisualDrone {
+  align-items: center;
+  background: #12385f;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  box-shadow: -15px 0 0 -9px #2f7ef2, 15px 0 0 -9px #ff9947;
+  color: #fff;
+  display: flex;
+  font-size: 9px;
+  height: 28px;
+  justify-content: center;
+  left: 50%;
+  position: absolute;
+  top: 42px;
+  transform: translateX(-50%);
+  width: 28px;
+  z-index: 2;
+}
+
+.missionVisualOrigin,
+.missionVisualTarget {
+  align-items: center;
+  border-radius: 8px 8px 3px 3px;
+  bottom: 14px;
+  color: #fff;
+  display: flex;
+  font-size: 9px;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  position: absolute;
+  width: 35px;
+  z-index: 2;
+}
+.missionVisualOrigin { background: #2874dd; left: 7%; }
+.missionVisualTarget { background: #e75461; right: 5%; }
+.missionCardVisualSearch .missionVisualOrigin { background: #173e68; width: 42px; }
+.missionCardVisualSearch .missionVisualTarget { background: #e78723; border-radius: 50%; width: 30px; }
+
+.missionCardVisual > strong {
+  background: rgba(11, 39, 70, 0.84);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 8px;
+  left: 10px;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  position: absolute;
+  top: 10px;
+}
+
 .missionCard > p:first-of-type {
   color: var(--experience-blue);
   font-size: 10px;
@@ -1268,9 +1367,391 @@
 .resultScreen,
 .teacherControls,
 .cover,
-.missionFlightOverlay {
+.missionFlightOverlay,
+.missionOperations {
   font-family: var(--font-s-core-dream), "Noto Sans KR", sans-serif;
 }
+
+.missionOperations {
+  background: #f6f9fd;
+  border: 1px solid rgba(196, 214, 233, 0.96);
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(8, 32, 63, 0.24);
+  inset: 16px 16px 92px;
+  max-height: calc(100% - 108px);
+  overflow: auto;
+  pointer-events: auto;
+  position: absolute;
+  z-index: 8;
+}
+
+.operationHeader {
+  align-items: center;
+  background: linear-gradient(135deg, #0a2d55 0%, #123f72 70%, #1766a4 100%);
+  color: #fff;
+  display: flex;
+  gap: 22px;
+  justify-content: space-between;
+  min-height: 106px;
+  padding: 21px 26px;
+}
+
+.operationHeader span,
+.operationHeader h3,
+.operationHeader p {
+  display: block;
+  margin: 0;
+}
+
+.operationHeader span {
+  color: #6fc0ff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.operationHeader h3 {
+  font-size: clamp(22px, 2.3vw, 32px);
+  letter-spacing: -0.045em;
+  margin-top: 4px;
+}
+
+.operationHeader p {
+  color: #c5dbef;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.operationHeader ol {
+  align-items: center;
+  display: flex;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.operationHeader li {
+  align-items: center;
+  color: #89a9c6;
+  display: flex;
+  font-size: 9px;
+  font-weight: 700;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.operationHeader li:not(:last-child)::after {
+  background: rgba(167, 201, 230, 0.28);
+  content: "";
+  height: 1px;
+  margin-inline: 7px;
+  width: 22px;
+}
+
+.operationHeader li b {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(196, 222, 244, 0.3);
+  border-radius: 50%;
+  display: inline-flex;
+  height: 25px;
+  justify-content: center;
+  width: 25px;
+}
+
+.operationHeader .operationStepActive {
+  color: #fff;
+}
+
+.operationHeader .operationStepActive b {
+  background: #2d78ff;
+  border-color: #62a3ff;
+}
+
+.operationBody {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(230px, 0.72fr) minmax(0, 1.7fr);
+  padding: 18px;
+}
+
+.dispatchCard {
+  background: linear-gradient(155deg, #112b4c 0%, #10223b 100%);
+  border-radius: 17px;
+  color: #fff;
+  min-width: 0;
+  overflow: hidden;
+  padding: 21px;
+  position: relative;
+}
+
+.dispatchCard::after {
+  border: 34px solid rgba(69, 157, 255, 0.09);
+  border-radius: 50%;
+  content: "";
+  height: 150px;
+  position: absolute;
+  right: -75px;
+  top: -70px;
+  width: 150px;
+}
+
+.dispatchSearch::after { border-color: rgba(255, 165, 65, 0.1); }
+
+.dispatchCard > span {
+  color: #62b3ff;
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.dispatchSearch > span { color: #ffad53; }
+
+.dispatchCard h4 {
+  font-size: 20px;
+  letter-spacing: -0.04em;
+  line-height: 1.35;
+  margin: 10px 0 8px;
+}
+
+.dispatchCard > p {
+  color: #bed0e1;
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.dispatchCard dl {
+  border-bottom: 1px solid rgba(180, 209, 235, 0.16);
+  border-top: 1px solid rgba(180, 209, 235, 0.16);
+  margin: 17px 0;
+  padding: 8px 0;
+}
+
+.dispatchCard dl div {
+  display: flex;
+  font-size: 9px;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+
+.dispatchCard dt { color: #829db8; }
+.dispatchCard dd { color: #fff; font-weight: 700; margin: 0; text-align: right; }
+
+.payloadCard {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(173, 210, 241, 0.16);
+  border-radius: 13px;
+  display: flex;
+  gap: 11px;
+  padding: 11px;
+}
+
+.payloadCard i {
+  align-items: center;
+  background: #fff;
+  border-radius: 9px;
+  color: #ed5967;
+  display: flex;
+  font-size: 21px;
+  font-style: normal;
+  font-weight: 900;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.dispatchSearch .payloadCard i { color: #e88418; }
+.payloadCard strong, .payloadCard span { display: block; }
+.payloadCard strong { font-size: 10px; }
+.payloadCard span { color: #95aec5; font-size: 8px; margin-top: 3px; }
+
+.operationDecision {
+  min-width: 0;
+}
+
+.decisionHeading span {
+  color: #2b70ee;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.decisionHeading h4 {
+  color: #10233f;
+  font-size: 20px;
+  letter-spacing: -0.04em;
+  margin: 4px 0;
+}
+
+.decisionHeading p {
+  color: #6b7c91;
+  font-size: 10px;
+  margin: 0 0 11px;
+}
+
+.routeChoiceGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.routeChoiceGrid > button {
+  background: #fff;
+  border: 1px solid #d6e1ed;
+  border-radius: 14px;
+  color: #142842;
+  cursor: pointer;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.routeChoiceGrid > button:hover,
+.routeChoiceGrid > .routeChoiceSelected {
+  border-color: #347df4;
+  box-shadow: 0 10px 24px rgba(42, 101, 188, 0.14);
+  transform: translateY(-1px);
+}
+
+.routeMap {
+  background:
+    linear-gradient(90deg, rgba(40, 106, 194, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(40, 106, 194, 0.06) 1px, transparent 1px),
+    #edf6fd;
+  background-size: 18px 18px;
+  border-radius: 10px;
+  display: block;
+  height: 63px;
+  overflow: hidden;
+  position: relative;
+}
+
+.routeMap i,
+.routeMap strong {
+  align-items: center;
+  background: #0e4d86;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-size: 8px;
+  font-style: normal;
+  height: 19px;
+  justify-content: center;
+  position: absolute;
+  top: 22px;
+  width: 19px;
+  z-index: 2;
+}
+
+.routeMap i { left: 12px; }
+.routeMap strong { background: #e75562; right: 12px; }
+
+.routeMap b {
+  border-top: 4px solid #2a7dff;
+  left: 27px;
+  position: absolute;
+  right: 27px;
+  top: 29px;
+  transform: rotate(-8deg);
+}
+
+.routeChoiceGrid > button:nth-child(2) .routeMap b {
+  border-top-color: #ef8e2d;
+  transform: rotate(7deg);
+}
+
+.routeMap em {
+  background: rgba(255, 142, 46, 0.26);
+  border: 1px dashed #f29b4b;
+  border-radius: 50%;
+  height: 34px;
+  left: 46%;
+  position: absolute;
+  top: 15px;
+  width: 34px;
+}
+
+.routeChoiceTitle {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  justify-content: space-between;
+  margin-top: 9px;
+}
+
+.routeChoiceTitle b { font-size: 12px; }
+.routeChoiceTitle small { background: #eaf2ff; border-radius: 999px; color: #286bdf; font-size: 7px; padding: 4px 6px; }
+.routeChoiceGrid > button > p { color: #6e7e91; font-size: 8px; line-height: 1.5; margin: 6px 0 8px; }
+.routeChoiceGrid dl { display: grid; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.routeChoiceGrid dl div { background: #f5f8fb; border-radius: 7px; padding: 5px; }
+.routeChoiceGrid dt { color: #8a98aa; font-size: 7px; }
+.routeChoiceGrid dd { color: #344963; font-size: 8px; font-weight: 700; margin: 2px 0 0; }
+
+.preflightBox {
+  align-items: center;
+  background: #edf4fe;
+  border: 1px solid #cbdcf4;
+  border-radius: 13px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.preflightBox > div > span { color: #2c609e; display: block; font-size: 8px; font-weight: 900; margin-bottom: 4px; }
+.preflightBox ul { display: flex; flex-wrap: wrap; gap: 4px 10px; list-style: none; margin: 0; padding: 0; }
+.preflightBox li { color: #3b5878; font-size: 8px; }
+.preflightBox button {
+  align-items: center;
+  background: #216cf3;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  font-size: 9px;
+  font-weight: 800;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 13px;
+  white-space: nowrap;
+}
+.preflightBox button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.missionConditionStack .missionConditionAlert {
+  background: rgba(255, 240, 226, 0.96);
+  border-color: #f1b66f;
+  color: #a55312;
+}
+.missionConditionStack .missionConditionAlert > span { color: #e37a20; }
+
+.handoverPrompt {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #b9d2ee;
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(7, 34, 67, 0.28);
+  left: 50%;
+  max-width: 430px;
+  padding: 25px;
+  pointer-events: auto;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 40px);
+}
+.handoverPrompt > span { color: #2670e9; font-size: 9px; font-weight: 900; letter-spacing: 0.12em; }
+.handoverPrompt h3 { color: #12243d; font-size: 25px; margin: 7px 0; }
+.handoverPrompt p { color: #68788d; font-size: 11px; line-height: 1.6; }
+.handoverPrompt div { display: flex; gap: 8px; justify-content: center; margin: 14px 0; }
+.handoverPrompt b { background: #edf4fb; border-radius: 8px; color: #314d6d; font-size: 9px; padding: 7px 10px; }
+.handoverPrompt button { background: #216cf3; border: 0; border-radius: 11px; color: #fff; font-weight: 800; min-height: 44px; padding: 10px 18px; }
 
 .cover {
   background:
@@ -2552,5 +3033,106 @@
     border-radius: 24px;
     height: 420px;
     min-height: 420px;
+  }
+}
+
+@media (max-width: 900px) {
+  .missionOperations {
+    inset: 10px 10px 86px;
+  }
+
+  .operationHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .operationHeader ol {
+    width: 100%;
+  }
+
+  .operationBody {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatchCard {
+    display: grid;
+    gap: 6px 18px;
+    grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.8fr);
+  }
+
+  .dispatchCard > span,
+  .dispatchCard h4,
+  .dispatchCard > p {
+    grid-column: 1;
+  }
+
+  .dispatchCard dl,
+  .dispatchCard .payloadCard {
+    grid-column: 2;
+  }
+
+  .dispatchCard dl {
+    grid-row: 1 / span 3;
+    margin: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .missionOperations {
+    border-radius: 16px;
+    inset: 8px 8px 80px;
+  }
+
+  .operationHeader {
+    padding: 17px;
+  }
+
+  .operationHeader li {
+    font-size: 0;
+  }
+
+  .operationHeader li b {
+    font-size: 9px;
+  }
+
+  .operationHeader li:not(:last-child)::after {
+    flex: 1;
+    width: auto;
+  }
+
+  .operationBody {
+    padding: 10px;
+  }
+
+  .dispatchCard {
+    display: block;
+  }
+
+  .dispatchCard dl {
+    margin: 14px 0;
+  }
+
+  .routeChoiceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .preflightBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .preflightBox button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .missionConditionStack {
+    right: 10px;
+    top: 10px;
+    width: 150px;
+  }
+
+  .missionConditionStack > div:nth-child(n + 3) {
+    display: none;
   }
 }

@@ -679,6 +679,44 @@ function addWindZone(marker: DroneSceneMarker, group: THREE.Group): void {
   group.add(zone);
 }
 
+function addFlightCorridor(marker: DroneSceneMarker, group: THREE.Group): void {
+  const path = marker.path ?? [];
+  const width = Math.max(1.6, Math.min(4.2, (marker.radius ?? 3.2) * 1.15));
+  const color = marker.active ? 0x35a7ff : 0x7aa8c9;
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: marker.active ? 0.15 : 0.08,
+    depthWrite: false,
+  });
+  for (let index = 1; index < path.length; index += 1) {
+    const start = path[index - 1];
+    const end = path[index];
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+    const length = Math.hypot(dx, dz);
+    if (length <= 0.01) continue;
+    const segment = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, length),
+      material.clone(),
+    );
+    segment.rotation.x = -Math.PI / 2;
+    segment.rotation.z = -Math.atan2(dx, dz);
+    segment.position.set((start.x + end.x) / 2, 0.026, (start.z + end.z) / 2);
+    group.add(segment);
+  }
+  for (const waypoint of path.slice(1, -1)) {
+    const beacon = new THREE.Mesh(
+      new THREE.RingGeometry(0.28, 0.38, 18),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.74 }),
+    );
+    beacon.rotation.x = -Math.PI / 2;
+    beacon.position.set(waypoint.x, 0.035, waypoint.z);
+    group.add(beacon);
+  }
+  material.dispose();
+}
+
 function rebuildMarkers(
   markers: readonly DroneSceneMarker[],
   group: THREE.Group,
@@ -707,6 +745,9 @@ function rebuildMarkers(
       case "wind-zone":
         addWindZone(marker, group);
         break;
+      case "flight-corridor":
+        addFlightCorridor(marker, group);
+        break;
     }
   }
   configureShadow(group, shadows);
@@ -716,7 +757,7 @@ function markerSignature(scene: DroneScenePresentation): string {
   return scene.markers
     .map(
       (marker) =>
-        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.size?.x ?? ""}:${marker.size?.y ?? ""}:${marker.size?.z ?? ""}:${marker.radius ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}`,
+        `${marker.id}:${marker.kind}:${marker.position.x}:${marker.position.y}:${marker.position.z}:${marker.size?.x ?? ""}:${marker.size?.y ?? ""}:${marker.size?.z ?? ""}:${marker.radius ?? ""}:${marker.path?.map((point) => `${point.x},${point.y},${point.z}`).join(";") ?? ""}:${marker.active ? 1 : 0}:${marker.completed ? 1 : 0}`,
     )
     .join("|");
 }

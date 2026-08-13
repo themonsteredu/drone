@@ -5,6 +5,7 @@ export type DroneSceneMarkerKind =
   | "arrow"
   | "building"
   | "hospital"
+  | "flight-corridor"
   | "search-target"
   | "wind-zone";
 
@@ -16,6 +17,8 @@ export interface DroneSceneMarker {
   normal?: { x: number; y: number; z: number };
   /** Exact world-space obstacle dimensions when the source is a box volume. */
   size?: { x: number; y: number; z: number };
+  /** Ordered centerline used by lightweight route/corridor visuals. */
+  path?: readonly { x: number; y: number; z: number }[];
   radius?: number;
   label?: string;
   active?: boolean;

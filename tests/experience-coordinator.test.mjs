@@ -68,6 +68,13 @@ function flightState({
   };
 }
 
+function prepareSelectedMission(coordinator) {
+  const mission = coordinator.getSnapshot().mission;
+  assert.ok(mission);
+  coordinator.chooseMissionPlan(mission.plans[0].id);
+  coordinator.confirmMissionDispatch();
+}
+
 test("coordinates the full hands-on tutorial into the training stage", () => {
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);
@@ -136,6 +143,7 @@ test("teacher mission shortcut keeps mission action and wind outside flight visu
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);
   coordinator.applyTeacherAction("start_disaster_search", initial);
+  prepareSelectedMission(coordinator);
   coordinator.queueMissionAction();
   coordinator.step(
     flightState({ phase: "FLIGHT", x: -5, y: 1.2, z: 8 }),
@@ -165,6 +173,7 @@ test("teacher mission shortcut keeps mission action and wind outside flight visu
   assert.equal(batteryReset.missionRuntime?.battery.percent, 100);
 
   coordinator.applyTeacherAction("start_medical_mission", initial);
+  prepareSelectedMission(coordinator);
   const wind = coordinator.step(
     flightState({ phase: "FLIGHT", x: 0, y: 1, z: 11 }),
     true,
@@ -179,6 +188,7 @@ test("box obstacles expose exact above-ground dimensions to the 3D scene", () =>
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);
   coordinator.applyTeacherAction("start_medical_mission", initial);
+  prepareSelectedMission(coordinator);
 
   const marker = coordinator
     .getSnapshot()
@@ -337,6 +347,7 @@ test("the complete student journey reaches both mission result screens", () => {
   coordinator.openMissionSelection();
   assert.equal(coordinator.getSnapshot().progress.stage, "MISSION_SELECT");
   coordinator.selectMission("medical-delivery", initial);
+  prepareSelectedMission(coordinator);
   coordinator.consumeFlightResetRequest();
   coordinator.synchronizeFlightState(initial);
   coordinator.step(
@@ -351,6 +362,13 @@ test("the complete student journey reaches both mission result screens", () => {
     0.2,
     "normal",
   );
+  coordinator.queueMissionAction();
+  coordinator.step(
+    flightState({ phase: "READY", x: 8, y: 0, z: 24 }),
+    true,
+    0.1,
+    "normal",
+  );
   let result = coordinator.getSnapshot();
   assert.equal(result.progress.stage, "RESULT");
   assert.equal(result.result?.completed, true);
@@ -358,6 +376,7 @@ test("the complete student journey reaches both mission result screens", () => {
 
   coordinator.openMissionSelection();
   coordinator.selectMission("disaster-search", initial);
+  prepareSelectedMission(coordinator);
   coordinator.consumeFlightResetRequest();
   coordinator.synchronizeFlightState(initial);
   for (const target of [

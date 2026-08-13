@@ -125,6 +125,35 @@ export interface WindZoneDefinition {
 
 export type MissionKind = "medical_delivery" | "disaster_search";
 
+export type MissionOperationPhase =
+  | "BRIEFING"
+  | "PREFLIGHT"
+  | "FLIGHT"
+  | "HANDOVER"
+  | "RETURNING"
+  | "COMPLETED";
+
+export interface MissionPlanDefinition {
+  id: string;
+  label: string;
+  summary: string;
+  badge: string;
+  distanceLabel: string;
+  durationLabel: string;
+  energyLabel: string;
+  riskLabel: string;
+  /** Lightweight world-space guide used for corridor awareness and rendering. */
+  waypoints: readonly Vector3[];
+  corridorRadius: number;
+  recommended?: boolean;
+}
+
+export interface MissionPayloadDefinition {
+  label: string;
+  detail: string;
+  handlingNote: string;
+}
+
 export interface MissionTargetDefinition {
   id: string;
   label: string;
@@ -150,6 +179,11 @@ export interface MissionDefinition {
   title: string;
   description: string;
   briefing: string;
+  roleTitle: string;
+  dispatchLabel: string;
+  plans: readonly MissionPlanDefinition[];
+  preflightChecklist: readonly string[];
+  payload?: MissionPayloadDefinition;
   startPosition: Vector3;
   targets: readonly MissionTargetDefinition[];
   timeLimitSeconds: number;

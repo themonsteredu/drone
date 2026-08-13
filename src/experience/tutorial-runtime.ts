@@ -45,7 +45,13 @@ export function tutorialCriterionSatisfied(
     return observation.position.y >= criterion.meters;
   }
   if (criterion.kind === "yaw_delta") {
-    const delta = wrappedAngleDelta(observation.yaw, state.baselineYaw);
+    // The criterion is written in the student's left/right terms, so it is
+    // judged on the heading they see rather than on internal yaw. The scene
+    // views the aircraft from behind and puts world +X on the viewer's left,
+    // which makes a turn the student calls "right" decrease internal yaw.
+    // Kept in step with `studentHeadingRadians` in simulator/flight-model.ts;
+    // the experience domain stays free of simulator imports.
+    const delta = -wrappedAngleDelta(observation.yaw, state.baselineYaw);
     return criterion.direction === "right"
       ? delta >= criterion.radians
       : delta <= -criterion.radians;

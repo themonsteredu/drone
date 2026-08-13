@@ -36,6 +36,7 @@ import {
 } from "../simulator/flight-controller";
 import {
   FLIGHT_PHASE,
+  studentHeadingRadians,
   type FlightCommand,
   type FlightPhase,
   type FlightState,
@@ -47,6 +48,11 @@ import {
 import { CERTIFICATION_TIME_LIMIT_SECONDS } from "../experience";
 import type { SimulatorPreferences } from "../simulator/settings";
 import { DEFAULT_MODE2_GESTURE_CONFIG } from "../simulator/mode2-gesture-detector";
+
+/** Student-facing copy and the hold gauge both read the detector's own value. */
+const ARMING_HOLD_SECONDS = Math.round(
+  DEFAULT_MODE2_GESTURE_CONFIG.armingHoldMs / 1000,
+);
 import { DroneVisual } from "./drone-visual-loader";
 import { FlightSettingsPanel } from "./flight-settings-panel";
 import type { SimulatorPreferencesUpdater } from "./use-simulator-preferences";
@@ -1253,7 +1259,7 @@ export function DroneSimulator({
                 {experience.tutorialStep.id === "arming" ? (
                   <ArmingHoldProgress
                     elapsedSeconds={mode2Gesture.armingHeldMs / 1000}
-                    durationSeconds={3}
+                    durationSeconds={ARMING_HOLD_SECONDS}
                   />
                 ) : null}
               </section>
@@ -1344,7 +1350,7 @@ export function DroneSimulator({
                 kind="tutorial"
                 title="Mode 2 조종법"
                 instruction="왼쪽 스틱은 고도와 회전, 오른쪽 스틱은 전후·좌우 이동을 조종합니다."
-                detail="첫 단계에서는 양쪽 스틱을 아래쪽 안으로 모아 3초 동안 시동을 겁니다."
+                detail={`첫 단계에서는 양쪽 스틱을 아래쪽 바깥으로 벌려 ${ARMING_HOLD_SECONDS}초 동안 시동을 겁니다.`}
                 primaryAction={{
                   label: "조종법 익히기 시작",
                   onSelect: beginTutorial,
@@ -1356,7 +1362,7 @@ export function DroneSimulator({
                 FlightTrainingHud. Only heading and ground position, which
                 neither of them shows, are described here for the canvas. */}
             <div id="flight-telemetry" className="flight-telemetry" aria-live="off">
-              <span>방향 <strong>{Math.round((telemetry.yaw * 180) / Math.PI)}°</strong></span>
+              <span>방향 <strong>{Math.round((studentHeadingRadians(telemetry.yaw) * 180) / Math.PI)}°</strong></span>
               <span>위치 <strong>{telemetry.position.x.toFixed(1)}, {telemetry.position.z.toFixed(1)}</strong></span>
             </div>
             <div className="flight-feedback-overlay">

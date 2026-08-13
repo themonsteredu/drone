@@ -92,7 +92,7 @@ test("recognizes assisted screen takeoff after the armed step", () => {
   assert.equal(flying.state.completed, true);
 });
 
-test("right yaw uses wrapped positive semantic direction", () => {
+test("a right turn is judged on the heading the student sees, not internal yaw", () => {
   const step = {
     id: "yaw",
     order: 1,
@@ -104,12 +104,16 @@ test("right yaw uses wrapped positive semantic direction", () => {
   const state = tutorial.createTutorialRuntimeState({
     position: { x: 0, y: 1, z: 0 }, yaw: 3, flightPhase: "FLIGHT",
   });
-  assert.equal(
+  const at = (yaw) =>
     tutorial.tutorialCriterionSatisfied(step, state, {
-      position: { x: 0, y: 1, z: 0 }, yaw: -2.1, flightPhase: "FLIGHT",
-    }),
-    true,
-  );
+      position: { x: 0, y: 1, z: 0 }, yaw, flightPhase: "FLIGHT",
+    });
+
+  // The scene views the aircraft from behind, so a turn the student calls
+  // "right" decreases internal yaw. Wrapping past +/-pi must still count.
+  assert.equal(at(1.6), true, "internal yaw decreased by more than 60 degrees");
+  assert.equal(at(-2.1), false, "the same size turn to the student's left");
+  assert.equal(at(2.6), false, "a right turn short of 60 degrees");
 });
 
 test("forward and right tutorial targets follow the aircraft heading", () => {

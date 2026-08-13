@@ -108,7 +108,7 @@ test("tutorial is an ordered six-step Mode 2 flight activity, not a checklist", 
     MODE2_TUTORIAL_STEPS.map((step) => step.id),
     ["arming", "takeoff", "yaw-right", "forward", "roll-right", "landing"],
   );
-  assert.match(MODE2_TUTORIAL_STEPS[0].instruction, /3초/);
+  assert.match(MODE2_TUTORIAL_STEPS[0].instruction, /벌려 2초/);
   assert.equal(MODE2_TUTORIAL_STEPS[1].criterion.kind, "minimum_altitude");
   assert.equal(MODE2_TUTORIAL_STEPS[2].criterion.direction, "right");
 });
@@ -133,25 +133,35 @@ test("training and certification courses expose three ordered gates and precisio
       "box",
       `${obstacle.id} must expose its exact height to the scene`,
     );
-    assert.equal(obstacle.volume.max.y - obstacle.volume.min.y, 24);
+    const height = obstacle.volume.max.y - obstacle.volume.min.y;
+    const tallestGate = Math.max(
+      ...BASIC_TRAINING_COURSE.gates.map((gate) => gate.center.y),
+    );
+    // Tall enough to read as a course marker from behind the aircraft, and
+    // short enough that a student can still see the ring line above it.
+    assert.ok(height > tallestGate && height < tallestGate * 4);
   }
 });
 
 test("gate pass accepts either plane direction through the clear opening", () => {
   const gate = BASIC_TRAINING_COURSE.gates[0];
+  // Derived from the gate so course tuning cannot silently stop exercising it.
+  const before = gate.center.z - 1;
+  const after = gate.center.z + 1;
+  const offCenter = gate.innerRadius - 0.1;
   const clear = detectGateIntersection(
-    { x: 0, y: gate.center.y, z: 4 },
-    { x: 0, y: gate.center.y, z: 6 },
+    { x: gate.center.x, y: gate.center.y, z: before },
+    { x: gate.center.x, y: gate.center.y, z: after },
     gate,
   );
   const backwards = detectGateIntersection(
-    { x: 0, y: gate.center.y, z: 6 },
-    { x: 0, y: gate.center.y, z: 4 },
+    { x: gate.center.x, y: gate.center.y, z: after },
+    { x: gate.center.x, y: gate.center.y, z: before },
     gate,
   );
   const rim = detectGateIntersection(
-    { x: 1.5, y: gate.center.y, z: 4 },
-    { x: 1.5, y: gate.center.y, z: 6 },
+    { x: gate.center.x + offCenter, y: gate.center.y, z: before },
+    { x: gate.center.x + offCenter, y: gate.center.y, z: after },
     gate,
   );
   assert.equal(clear.kind, "clear");
@@ -166,17 +176,19 @@ test("gate pass accepts either plane direction through the clear opening", () =>
 
 test("ordered tracker ignores a later gate until the expected gate is passed", () => {
   const tracker = new CourseTracker(BASIC_TRAINING_COURSE);
+  const second = BASIC_TRAINING_COURSE.gates[1];
   const skipped = tracker.update(
-    { x: 2.2, y: 1.7, z: 9 },
-    { x: 2.2, y: 1.7, z: 11 },
+    { x: second.center.x, y: second.center.y, z: second.center.z - 1 },
+    { x: second.center.x, y: second.center.y, z: second.center.z + 1 },
     1,
   );
   assert.equal(skipped.events.filter((event) => event.type === "gatePassed").length, 0);
   assert.equal(skipped.snapshot.nextGateIndex, 0);
 
+  const opening = BASIC_TRAINING_COURSE.gates[0];
   const first = tracker.update(
-    { x: 0, y: BASIC_TRAINING_COURSE.gates[0].center.y, z: 4 },
-    { x: 0, y: BASIC_TRAINING_COURSE.gates[0].center.y, z: 6 },
+    { x: opening.center.x, y: opening.center.y, z: opening.center.z - 1 },
+    { x: opening.center.x, y: opening.center.y, z: opening.center.z + 1 },
     2,
   );
   assert.deepEqual(first.snapshot.passedGateIds, ["training-gate-1"]);
@@ -213,25 +225,22 @@ test("the third gate sensor accepts a drone centered in its visible trigger", ()
 
 test("ring and obstacle contacts emit debounced collision events", () => {
   const tracker = new CourseTracker(BASIC_TRAINING_COURSE);
-  const gateY = BASIC_TRAINING_COURSE.gates[0].center.y;
-  const firstHit = tracker.update(
-    { x: 1.5, y: gateY, z: 4 },
-    { x: 1.5, y: gateY, z: 6 },
-    1,
-  );
-  const repeatedHit = tracker.update(
-    { x: 1.5, y: gateY, z: 4 },
-    { x: 1.5, y: gateY, z: 6 },
-    1.2,
-  );
+  const gate = BASIC_TRAINING_COURSE.gates[0];
+  const rimX = gate.center.x + gate.innerRadius - 0.1;
+  const rimPass = [
+    { x: rimX, y: gate.center.y, z: gate.center.z - 1 },
+    { x: rimX, y: gate.center.y, z: gate.center.z + 1 },
+  ];
+  const firstHit = tracker.update(rimPass[0], rimPass[1], 1);
+  const repeatedHit = tracker.update(rimPass[0], rimPass[1], 1.2);
   assert.equal(firstHit.events.some((event) => event.type === "collision"), true);
   assert.equal(repeatedHit.events.some((event) => event.type === "collision"), false);
 
   const obstacle = BASIC_TRAINING_COURSE.obstacles[0];
   assert.equal(
     segmentIntersectsObstacle(
-      { x: -3, y: 1, z: 7.4 },
-      { x: -1.5, y: 1, z: 7.4 },
+      { x: obstacle.volume.min.x - 1, y: 1, z: obstacle.volume.min.z + 0.2 },
+      { x: obstacle.volume.max.x + 1, y: 1, z: obstacle.volume.min.z + 0.2 },
       obstacle,
     ),
     true,

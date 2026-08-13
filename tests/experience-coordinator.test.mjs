@@ -45,6 +45,10 @@ function loadTypeScriptModule(url) {
 const { ExperienceCoordinator } = loadTypeScriptModule(
   new URL("../src/simulator/experience-coordinator.ts", import.meta.url),
 );
+const { BASIC_TRAINING_COURSE } = loadTypeScriptModule(
+  new URL("../src/experience/training.ts", import.meta.url),
+);
+const PAD = BASIC_TRAINING_COURSE.landingZone.center;
 
 function flightState({
   phase = "READY",
@@ -96,7 +100,8 @@ test("coordinates the full hands-on tutorial into the training stage", () => {
     "normal",
   );
   coordinator.step(
-    flightState({ phase: "FLIGHT", y: 1.05, yaw: Math.PI / 2 }),
+    // A turn the student sees as "right" decreases internal yaw.
+    flightState({ phase: "FLIGHT", y: 1.05, yaw: -Math.PI / 2 }),
     true,
     0.016,
     "normal",
@@ -114,19 +119,19 @@ test("coordinates the full hands-on tutorial into the training stage", () => {
     "전진 목표",
   );
   coordinator.step(
-    flightState({ phase: "FLIGHT", x: 3, y: 1.05, yaw: Math.PI / 2 }),
+    flightState({ phase: "FLIGHT", x: -3, y: 1.05, yaw: -Math.PI / 2 }),
     true,
     0.016,
     "normal",
   );
   coordinator.step(
-    flightState({ phase: "FLIGHT", x: 3, y: 1, z: -2.5, yaw: Math.PI / 2 }),
+    flightState({ phase: "FLIGHT", x: -3, y: 1, z: 2.5, yaw: -Math.PI / 2 }),
     true,
     0.016,
     "normal",
   );
   const landing = coordinator.step(
-    flightState({ phase: "READY", x: 3, y: 0, z: -2.5, yaw: Math.PI / 2 }),
+    flightState({ phase: "READY", x: -3, y: 0, z: 2.5, yaw: -Math.PI / 2 }),
     true,
     0.016,
     "normal",
@@ -259,20 +264,16 @@ test("certification requires right yaw and a separate in-flight altitude change"
 });
 
 function crossCourseGates(coordinator) {
-  const crossings = [
-    [
-      { x: 0, y: 2.05, z: 4.5 },
-      { x: 0, y: 2.05, z: 5.5 },
-    ],
-    [
-      { x: 2.2, y: 1.75, z: 9.5 },
-      { x: 2.2, y: 1.75, z: 10.5 },
-    ],
-    [
-      { x: 4.5, y: 1.6, z: 14 },
-      { x: 5.5, y: 1.6, z: 14 },
-    ],
-  ];
+  // Derived from the course so ring tuning cannot quietly stop crossing them.
+  const crossings = BASIC_TRAINING_COURSE.gates.map((gate) => {
+    const alongX = Math.abs(gate.normal.x) > Math.abs(gate.normal.z);
+    const step = (offset) => ({
+      x: gate.center.x + (alongX ? offset : 0),
+      y: gate.center.y,
+      z: gate.center.z + (alongX ? 0 : offset),
+    });
+    return [step(-0.5), step(0.5)];
+  });
   for (const [before, after] of crossings) {
     coordinator.step(
       flightState({ phase: "FLIGHT", ...before }),
@@ -299,13 +300,13 @@ test("the complete student journey reaches both mission result screens", () => {
 
   crossCourseGates(coordinator);
   coordinator.step(
-    flightState({ phase: "FLIGHT", x: 8, y: 0.2, z: 14 }),
+    flightState({ phase: "FLIGHT", x: PAD.x, y: 0.2, z: PAD.z }),
     true,
     0.2,
     "normal",
   );
   const trainingLanding = coordinator.step(
-    flightState({ phase: "READY", x: 8, y: 0, z: 14 }),
+    flightState({ phase: "READY", x: PAD.x, y: 0, z: PAD.z }),
     true,
     0.2,
     "normal",
@@ -323,19 +324,19 @@ test("the complete student journey reaches both mission result screens", () => {
   );
   crossCourseGates(coordinator);
   coordinator.step(
-    flightState({ phase: "FLIGHT", x: 5.5, y: 1.8, z: 14, yaw: Math.PI / 2 }),
+    flightState({ phase: "FLIGHT", x: PAD.x - 2.5, y: 1.8, z: PAD.z, yaw: Math.PI / 2 }),
     true,
     0.2,
     "normal",
   );
   coordinator.step(
-    flightState({ phase: "FLIGHT", x: 8, y: 0.2, z: 14, yaw: Math.PI / 2 }),
+    flightState({ phase: "FLIGHT", x: PAD.x, y: 0.2, z: PAD.z, yaw: Math.PI / 2 }),
     true,
     0.2,
     "normal",
   );
   coordinator.step(
-    flightState({ phase: "READY", x: 8, y: 0, z: 14, yaw: Math.PI / 2 }),
+    flightState({ phase: "READY", x: PAD.x, y: 0, z: PAD.z, yaw: Math.PI / 2 }),
     true,
     0.2,
     "normal",

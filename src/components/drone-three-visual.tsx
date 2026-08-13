@@ -32,8 +32,14 @@ const UP = new THREE.Vector3(0, 1, 0);
 const FRONT_ROTOR_COLOR = 0xff783f;
 const REAR_ROTOR_COLOR = 0x3478f6;
 const LANDING_PAD_VISUAL_SCALE = 1.18;
-const DRONE_GROUND_CLEARANCE = 0.65;
 const LANDING_PAD_SURFACE_Y = 0.04;
+// The landing feet end at local Y -0.605. Keep them a few millimetres above
+// the pad surface so shadows can meet the pad without the geometry clipping.
+const DRONE_MODEL_LOWEST_Y = -0.605;
+const DRONE_GROUND_GAP = 0.006;
+const DRONE_GROUND_CLEARANCE =
+  LANDING_PAD_SURFACE_Y - DRONE_MODEL_LOWEST_Y + DRONE_GROUND_GAP;
+const CAMERA_GROUND_LOCK_HEIGHT = 0.08;
 
 function meshMaterial(
   color: THREE.ColorRepresentation,
@@ -856,6 +862,7 @@ export function DroneThreeVisual({
 
       const transform = readTransformRef.current();
       const presentation = readSceneRef.current?.() ?? EMPTY_DRONE_SCENE;
+      const grounded = transform.position.y <= 0.02;
       const signature = markerSignature(presentation);
       if (signature !== markerState) {
         markerState = signature;
@@ -877,13 +884,13 @@ export function DroneThreeVisual({
       );
       drone.tilt.rotation.x = THREE.MathUtils.lerp(
         drone.tilt.rotation.x,
-        transform.tilt.pitch,
-        reducedMotion ? 1 : 0.18,
+        grounded ? 0 : transform.tilt.pitch,
+        reducedMotion || grounded ? 1 : 0.18,
       );
       drone.tilt.rotation.z = THREE.MathUtils.lerp(
         drone.tilt.rotation.z,
-        -transform.tilt.roll,
-        reducedMotion ? 1 : 0.18,
+        grounded ? 0 : -transform.tilt.roll,
+        reducedMotion || grounded ? 1 : 0.18,
       );
       const rotorTurn = deltaSeconds * (3 + transform.rotorSpeed * 58);
       for (const [index, rotor] of drone.rotors.entries()) {
@@ -925,8 +932,9 @@ export function DroneThreeVisual({
       // Once the gear touches down, stop the last few damped camera frames.
       // Otherwise a fixed world-space pad appears to slide under a stationary
       // drone even though its marker coordinates never changed.
-      const grounded = transform.position.y <= 0.02;
-      const cameraResponse = reducedMotion || grounded
+      const cameraGroundLocked =
+        transform.position.y <= CAMERA_GROUND_LOCK_HEIGHT;
+      const cameraResponse = reducedMotion || cameraGroundLocked
         ? 1
         : isTutorial
           ? 0.09

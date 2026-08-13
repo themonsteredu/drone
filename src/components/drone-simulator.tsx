@@ -47,7 +47,7 @@ import {
 import { CERTIFICATION_TIME_LIMIT_SECONDS } from "../experience";
 import type { SimulatorPreferences } from "../simulator/settings";
 import { DEFAULT_MODE2_GESTURE_CONFIG } from "../simulator/mode2-gesture-detector";
-import { DroneVisual } from "./drone-visual";
+import { DroneVisual } from "./drone-visual-loader";
 import { FlightSettingsPanel } from "./flight-settings-panel";
 import type { SimulatorPreferencesUpdater } from "./use-simulator-preferences";
 import { StudentStatusHud } from "./experience/student-status-hud";

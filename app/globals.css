@@ -2305,6 +2305,76 @@ h1 {
   z-index: 1;
 }
 
+.drone-three-scene,
+.drone-visual-fallback,
+.drone-three-loading {
+  height: auto;
+  inset: 0;
+  min-height: 0;
+  position: absolute;
+  width: 100%;
+  z-index: 1;
+}
+
+.drone-three-scene canvas,
+.drone-visual-fallback canvas {
+  height: 100% !important;
+  inset: 0;
+  min-height: 100%;
+  position: absolute;
+  width: 100% !important;
+}
+
+.drone-three-loading {
+  align-items: center;
+  background: linear-gradient(180deg, #9ed6fa, #e8f3f7 58%, #cbd8c4);
+  color: #234461;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 12px;
+  justify-content: center;
+}
+
+.drone-three-loading span {
+  animation: drone-scene-loading 900ms ease-in-out infinite alternate;
+  background: #2674ff;
+  border-radius: 50%;
+  height: 12px;
+  width: 12px;
+}
+
+.drone-visual-fallback > span {
+  background: rgba(12, 38, 66, 0.78);
+  border-radius: 999px;
+  bottom: 14px;
+  color: #fff;
+  font-size: 10px;
+  left: 50%;
+  padding: 7px 11px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 4;
+}
+
+@keyframes drone-scene-loading {
+  from {
+    opacity: 0.38;
+    transform: scale(0.78);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drone-three-loading span {
+    animation: none;
+  }
+}
+
 .static-drone {
   filter: drop-shadow(0 18px 13px rgba(31, 55, 78, 0.2));
   height: 82px;

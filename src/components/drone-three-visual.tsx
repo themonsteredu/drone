@@ -29,6 +29,9 @@ interface DroneModel {
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
+const FRONT_ROTOR_COLOR = 0xff783f;
+const REAR_ROTOR_COLOR = 0x3478f6;
+const LANDING_PAD_VISUAL_SCALE = 1.18;
 
 function meshMaterial(
   color: THREE.ColorRepresentation,
@@ -113,12 +116,16 @@ function createDroneModel(shadows: boolean): DroneModel {
   ];
   const rotors: THREE.Group[] = [];
 
-  for (const [index, position] of rotorPositions.entries()) {
+  for (const position of rotorPositions) {
     tilt.add(makeArm(position, navy));
+    const isFrontRotor = position.z > 0;
+    const rotorColor = isFrontRotor
+      ? FRONT_ROTOR_COLOR
+      : REAR_ROTOR_COLOR;
 
     const motor = new THREE.Mesh(
       new THREE.CylinderGeometry(0.18, 0.2, 0.23, 12),
-      index % 2 === 0 ? orange : blue,
+      isFrontRotor ? orange : blue,
     );
     motor.position.copy(position);
     tilt.add(motor);
@@ -126,10 +133,10 @@ function createDroneModel(shadows: boolean): DroneModel {
     const rotor = new THREE.Group();
     rotor.position.copy(position).add(new THREE.Vector3(0, 0.18, 0));
     const bladeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x20364f,
+      color: rotorColor,
       roughness: 0.34,
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.82,
       depthWrite: false,
     });
     const bladeGeometry = new THREE.BoxGeometry(0.92, 0.018, 0.09);
@@ -175,8 +182,50 @@ function createDroneModel(shadows: boolean): DroneModel {
   return { root, tilt, rotors, shadow };
 }
 
+function addSkyDome(scene: THREE.Scene): void {
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(135, 20, 12),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x57b8f4) },
+        horizonColor: { value: new THREE.Color(0xeaf8ff) },
+        lowerColor: { value: new THREE.Color(0xf7fbf4) },
+      },
+      vertexShader: `
+        varying float vHeight;
+        void main() {
+          vHeight = normalize(position).y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 horizonColor;
+        uniform vec3 lowerColor;
+        varying float vHeight;
+        void main() {
+          float skyMix = smoothstep(-0.02, 0.72, vHeight);
+          float groundMix = smoothstep(-0.18, 0.02, vHeight);
+          vec3 lower = mix(lowerColor, horizonColor, groundMix);
+          gl_FragColor = vec4(mix(lower, topColor, skyMix), 1.0);
+        }
+      `,
+    }),
+  );
+  scene.add(dome);
+
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(2.4, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xfff2bf, fog: false }),
+  );
+  sun.position.set(-34, 28, 74);
+  scene.add(sun);
+}
+
 function addRunway(scene: THREE.Scene): void {
-  const groundMaterial = meshMaterial(0xcbd8c4, 1, 0);
+  const groundMaterial = meshMaterial(0x87aa78, 1, 0);
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(150, 190),
     groundMaterial,
@@ -187,18 +236,18 @@ function addRunway(scene: THREE.Scene): void {
   scene.add(ground);
 
   const apron = new THREE.Mesh(
-    new THREE.PlaneGeometry(28, 120),
-    meshMaterial(0x87959f, 0.94, 0.02),
+    new THREE.PlaneGeometry(32, 120),
+    meshMaterial(0xd8e0e1, 0.96, 0.01),
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.set(0, -0.045, 34);
   apron.receiveShadow = true;
   scene.add(apron);
 
-  const shoulderMaterial = meshMaterial(0xb7c2c7, 0.95, 0);
-  for (const x of [-15.2, 15.2]) {
+  const shoulderMaterial = meshMaterial(0xb7c6c5, 0.98, 0);
+  for (const x of [-15, 15]) {
     const shoulder = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.2, 120),
+      new THREE.PlaneGeometry(1.8, 120),
       shoulderMaterial,
     );
     shoulder.rotation.x = -Math.PI / 2;
@@ -206,7 +255,7 @@ function addRunway(scene: THREE.Scene): void {
     scene.add(shoulder);
   }
 
-  const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fbff });
+  const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (let z = -18; z < 91; z += 8) {
     const centerLine = new THREE.Mesh(
       new THREE.PlaneGeometry(0.34, 4.3),
@@ -217,14 +266,25 @@ function addRunway(scene: THREE.Scene): void {
     scene.add(centerLine);
   }
 
-  for (const x of [-13.3, 13.3]) {
+  const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x2c78d8 });
+  for (const x of [-13.8, 13.8]) {
     const edge = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.22, 119),
-      lineMaterial,
+      new THREE.PlaneGeometry(0.28, 119),
+      edgeMaterial,
     );
     edge.rotation.x = -Math.PI / 2;
     edge.position.set(x, -0.01, 34);
     scene.add(edge);
+  }
+
+  for (const z of [-4, 12, 28, 44, 60, 76]) {
+    const guide = new THREE.Mesh(
+      new THREE.PlaneGeometry(27, 0.08),
+      new THREE.MeshBasicMaterial({ color: 0x9fb1b5 }),
+    );
+    guide.rotation.x = -Math.PI / 2;
+    guide.position.set(0, -0.008, z);
+    scene.add(guide);
   }
 }
 
@@ -233,16 +293,22 @@ function addHillsAndTrees(
   treeCount: number,
   shadows: boolean,
 ): void {
-  const hillMaterial = meshMaterial(0x77966e, 1, 0);
+  const hillMaterials = [
+    meshMaterial(0x6f956c, 1, 0),
+    meshMaterial(0x7fa277, 1, 0),
+  ];
   const hillPositions = [
-    [-32, 3.8, 58, 22, 8, 18],
-    [0, 3.2, 69, 27, 7, 17],
-    [35, 4.1, 60, 25, 9, 19],
-    [-54, 2.8, 77, 29, 7, 15],
-    [57, 3, 80, 30, 7, 16],
+    [-38, 3.2, 78, 25, 7, 18],
+    [-6, 2.8, 88, 29, 6, 20],
+    [31, 3.4, 80, 26, 7, 19],
+    [-61, 2.2, 96, 30, 5.5, 17],
+    [61, 2.5, 96, 31, 6, 18],
   ] as const;
-  for (const [x, y, z, sx, sy, sz] of hillPositions) {
-    const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 7), hillMaterial);
+  for (const [index, [x, y, z, sx, sy, sz]] of hillPositions.entries()) {
+    const hill = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 12, 7),
+      hillMaterials[index % hillMaterials.length],
+    );
     hill.position.set(x, y - sy * 0.48, z);
     hill.scale.set(sx, sy, sz);
     hill.receiveShadow = true;
@@ -289,7 +355,13 @@ function addHillsAndTrees(
 }
 
 function addSkyDetails(scene: THREE.Scene): void {
-  const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const cloudMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    fog: false,
+  });
   const positions = [
     [-18, 14, 30],
     [22, 17, 52],
@@ -324,7 +396,11 @@ function disposeGroup(group: THREE.Group): void {
 }
 
 function addPad(marker: DroneSceneMarker, group: THREE.Group): void {
-  const radius = marker.radius ?? (marker.kind === "landing-pad" ? 2.4 : 1.8);
+  const baseRadius =
+    marker.radius ?? (marker.kind === "landing-pad" ? 2.4 : 1.8);
+  const radius = marker.kind === "landing-pad"
+    ? baseRadius * LANDING_PAD_VISUAL_SCALE
+    : baseRadius;
   const completed = marker.completed ?? false;
   const active = marker.active ?? false;
   const color = completed ? 0x48bf73 : active ? 0x2b77ff : 0xf3f7fb;
@@ -334,17 +410,37 @@ function addPad(marker: DroneSceneMarker, group: THREE.Group): void {
   );
   pad.position.set(marker.position.x, 0, marker.position.z);
   group.add(pad);
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(radius * 0.72, 0.08, 8, 32),
-    new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: active ? 0.38 : 0.12,
-    }),
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.set(marker.position.x, 0.075, marker.position.z);
-  group.add(ring);
+  for (const [index, ratio] of [0.3, 0.55, 0.78, 0.96].entries()) {
+    const ringColor = index === 3 ? color : 0xf4f8fb;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * ratio, index === 3 ? 0.1 : 0.055, 8, 36),
+      new THREE.MeshStandardMaterial({
+        color: ringColor,
+        emissive: ringColor,
+        emissiveIntensity: active && index === 3 ? 0.42 : 0.08,
+      }),
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(marker.position.x, 0.075, marker.position.z);
+    group.add(ring);
+  }
+
+  if (marker.kind === "landing-pad") {
+    const markMaterial = new THREE.MeshBasicMaterial({ color: 0xf8fbff });
+    const crossbar = new THREE.Mesh(
+      new THREE.PlaneGeometry(radius * 0.9, 0.12),
+      markMaterial,
+    );
+    const upright = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.12, radius * 0.9),
+      markMaterial,
+    );
+    for (const mark of [crossbar, upright]) {
+      mark.rotation.x = -Math.PI / 2;
+      mark.position.set(marker.position.x, 0.082, marker.position.z);
+      group.add(mark);
+    }
+  }
 }
 
 function addGate(marker: DroneSceneMarker, group: THREE.Group): void {
@@ -574,8 +670,8 @@ export function DroneThreeVisual({
     container.append(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x9ed6fa);
-    scene.fog = new THREE.Fog(0xc9e5f4, 42, 118);
+    scene.background = new THREE.Color(0x8fd3fb);
+    scene.fog = new THREE.Fog(0xdceff2, 66, 145);
 
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 180);
     camera.position.set(7.5, 5.5, -9.5);
@@ -597,6 +693,7 @@ export function DroneThreeVisual({
     }
     scene.add(sun);
 
+    addSkyDome(scene);
     addRunway(scene);
     addHillsAndTrees(scene, quality.treeCount, quality.shadows);
     addSkyDetails(scene);

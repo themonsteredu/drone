@@ -113,6 +113,14 @@ function volumeRadius(
   return Math.max(volume.max.x - volume.min.x, volume.max.z - volume.min.z) / 2;
 }
 
+function landingZoneRadius(zone: {
+  bands: readonly { maxRadius: number }[];
+}): number {
+  let radius = 0;
+  for (const band of zone.bands) radius = Math.max(radius, band.maxRadius);
+  return radius || 2.2;
+}
+
 function bodyRelativePoint(
   origin: Readonly<{ x: number; y: number; z: number }>,
   yaw: number,
@@ -764,7 +772,7 @@ export class ExperienceCoordinator {
           id: "tutorial-start-pad",
           kind: "start-pad",
           position: { x: 0, y: 0, z: 0 },
-          radius: 1.2,
+          radius: 1.8,
           label: "출발",
           active: true,
         });
@@ -798,7 +806,7 @@ export class ExperienceCoordinator {
           id: "tutorial-landing-pad",
           kind: "landing-pad",
           position: { x: target.x, y: 0, z: target.z },
-          radius: 0.8,
+          radius: 1.8,
           label: "오른쪽 착륙 지점",
           active: true,
         });
@@ -811,7 +819,7 @@ export class ExperienceCoordinator {
         id: `${course.id}-start`,
         kind: "start-pad",
         position: course.startPosition,
-        radius: 1.2,
+        radius: 1.8,
         label: "출발",
       });
       for (const [index, gate] of course.gates.entries()) {
@@ -838,7 +846,7 @@ export class ExperienceCoordinator {
         id: course.landingZone.id,
         kind: "landing-pad",
         position: course.landingZone.center,
-        radius: 1.4,
+        radius: landingZoneRadius(course.landingZone),
         label: "착륙",
         active: this.courseSnapshot.nextGateIndex >= course.gates.length,
       });
@@ -847,7 +855,7 @@ export class ExperienceCoordinator {
         id: `${this.mission.id}-start`,
         kind: this.mission.kind === "medical_delivery" ? "hospital" : "start-pad",
         position: this.mission.startPosition,
-        radius: 1.4,
+        radius: this.mission.kind === "medical_delivery" ? 1.4 : 1.8,
         label: this.mission.kind === "medical_delivery" ? "병원 A" : "출발 지점",
       });
       for (const obstacle of this.mission.obstacles) {
@@ -889,7 +897,7 @@ export class ExperienceCoordinator {
         id: this.mission.landingZone.id,
         kind: "landing-pad",
         position: this.mission.landingZone.center,
-        radius: 1.4,
+        radius: landingZoneRadius(this.mission.landingZone),
         label: this.mission.landingZone.label,
       });
     }

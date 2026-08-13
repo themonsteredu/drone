@@ -27,6 +27,8 @@ export interface Mode2GestureConfig {
   armingHoldMs: number;
   /** Required magnitude for each of the four inward/down semantic axes. */
   armingAxisThreshold: number;
+  /** Brief packet/analog jitter tolerated without losing the whole hold. */
+  armingReleaseGraceMs: number;
   /** Throttle must be this low while the bound L button is held. */
   emergencyThrottleThreshold: number;
 }
@@ -48,7 +50,11 @@ export const DEFAULT_MODE2_GESTURE_BINDINGS: Readonly<Mode2GestureBindings> =
 export const DEFAULT_MODE2_GESTURE_CONFIG: Readonly<Mode2GestureConfig> =
   Object.freeze({
     armingHoldMs: 3000,
-    armingAxisThreshold: 0.7,
+    // Four simultaneous axes for three seconds is already a deliberate
+    // gesture. 0.58 also works with BYROBOT X axes whose observed endpoint is
+    // around 0.65 instead of forcing an unreachable 0.70 corner.
+    armingAxisThreshold: 0.58,
+    armingReleaseGraceMs: 180,
     emergencyThrottleThreshold: -0.75,
   });
 
@@ -81,9 +87,14 @@ export function resolveMode2GestureConfig(
   return {
     armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 3000)),
     armingAxisThreshold: clamp(
-      Math.abs(finiteOr(merged.armingAxisThreshold, 0.7)),
+      Math.abs(finiteOr(merged.armingAxisThreshold, 0.58)),
       0.2,
       1,
+    ),
+    armingReleaseGraceMs: clamp(
+      finiteOr(merged.armingReleaseGraceMs, 180),
+      0,
+      500,
     ),
     emergencyThrottleThreshold: clamp(
       finiteOr(merged.emergencyThrottleThreshold, -0.75),
@@ -143,6 +154,7 @@ function readySnapshot(): Mode2GestureSnapshot {
 export class Mode2GestureDetector {
   private phase: Mode2GesturePhase = MODE2_GESTURE_PHASE.READY;
   private armingStartedAt: number | null = null;
+  private armingLastActiveAt: number | null = null;
   private emergencyWasActive = false;
   private snapshot: Mode2GestureSnapshot = readySnapshot();
 
@@ -168,9 +180,19 @@ export class Mode2GestureDetector {
     let justArmed = false;
 
     if (this.phase !== MODE2_GESTURE_PHASE.ARMED) {
-      if (!armingGestureActive) {
+      if (armingGestureActive) {
+        this.armingLastActiveAt = observedAt;
+      }
+      const releaseWithinGrace = Boolean(
+        !armingGestureActive &&
+          this.phase === MODE2_GESTURE_PHASE.ARMING &&
+          this.armingLastActiveAt !== null &&
+          observedAt - this.armingLastActiveAt <= config.armingReleaseGraceMs,
+      );
+      if (!armingGestureActive && !releaseWithinGrace) {
         this.phase = MODE2_GESTURE_PHASE.READY;
         this.armingStartedAt = null;
+        this.armingLastActiveAt = null;
       } else {
         if (
           this.armingStartedAt === null ||
@@ -180,7 +202,10 @@ export class Mode2GestureDetector {
           armingStarted = true;
         }
         this.phase = MODE2_GESTURE_PHASE.ARMING;
-        if (observedAt - this.armingStartedAt >= config.armingHoldMs) {
+        if (
+          armingGestureActive &&
+          observedAt - this.armingStartedAt >= config.armingHoldMs
+        ) {
           this.phase = MODE2_GESTURE_PHASE.ARMED;
           justArmed = true;
         }
@@ -216,6 +241,7 @@ export class Mode2GestureDetector {
   reset(): Mode2GestureSnapshot {
     this.phase = MODE2_GESTURE_PHASE.READY;
     this.armingStartedAt = null;
+    this.armingLastActiveAt = null;
     this.emergencyWasActive = false;
     this.snapshot = readySnapshot();
     return this.getSnapshot();

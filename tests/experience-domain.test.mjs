@@ -194,11 +194,11 @@ test("landing assessment produces exact 100/80/60/40/fail bands", () => {
     y: height,
     z: zone.center.z,
   });
-  assert.equal(assessLanding(position(0.2), zone).score, 100);
-  assert.equal(assessLanding(position(0.5), zone).score, 80);
-  assert.equal(assessLanding(position(0.9), zone).score, 60);
-  assert.equal(assessLanding(position(1.3), zone).score, 40);
-  assert.equal(assessLanding(position(1.5), zone).score, 0);
+  assert.equal(assessLanding(position(0.3), zone).score, 100);
+  assert.equal(assessLanding(position(0.7), zone).score, 80);
+  assert.equal(assessLanding(position(1.2), zone).score, 60);
+  assert.equal(assessLanding(position(1.9), zone).score, 40);
+  assert.equal(assessLanding(position(2.3), zone).score, 0);
   assert.equal(assessLanding(position(0, 0.5), zone).score, 0);
 });
 

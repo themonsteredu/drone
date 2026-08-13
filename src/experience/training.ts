@@ -6,10 +6,10 @@ import type {
 } from "./types";
 
 export const STANDARD_LANDING_BANDS: readonly LandingBand[] = [
-  { maxRadius: 0.3, score: 100, label: "중앙" },
-  { maxRadius: 0.65, score: 80, label: "안쪽" },
-  { maxRadius: 1, score: 60, label: "중간" },
-  { maxRadius: 1.4, score: 40, label: "가장자리" },
+  { maxRadius: 0.45, score: 100, label: "중앙" },
+  { maxRadius: 0.9, score: 80, label: "안쪽" },
+  { maxRadius: 1.45, score: 60, label: "중간" },
+  { maxRadius: 2.2, score: 40, label: "가장자리" },
 ] as const;
 
 export function createLandingZone(

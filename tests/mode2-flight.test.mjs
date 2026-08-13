@@ -135,7 +135,7 @@ test("each inward/down semantic axis is required for Mode 2 arming", () => {
   }
 });
 
-test("Mode 2 arming holds the documented 0.70 axis threshold", () => {
+test("Mode 2 arming accepts the measured BYROBOT X-axis endpoint", () => {
   const corner = (magnitude) =>
     mappedState({
       throttle: -magnitude,
@@ -144,17 +144,51 @@ test("Mode 2 arming holds the documented 0.70 axis threshold", () => {
       roll: -magnitude,
     });
 
-  assert.equal(
-    gestures.isMode2ArmingGestureActive(corner(0.56)),
-    false,
-    "a half-pushed diagonal is not the documented start gesture",
-  );
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.69)), false);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.7)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.57)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.58)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.65)), true);
   assert.equal(gestures.isMode2ArmingGestureActive(corner(1)), true);
   assert.equal(
     gestures.resolveMode2GestureConfig().armingAxisThreshold,
-    0.7,
+    0.58,
+  );
+});
+
+test("a momentary analog wobble does not erase the three-second hold", () => {
+  const detector = new gestures.Mode2GestureDetector();
+  const corner = mappedState({
+    throttle: -0.8,
+    yaw: 0.65,
+    pitch: -0.8,
+    roll: -0.65,
+  });
+
+  detector.observe(corner, 0);
+  detector.observe(corner, 1400);
+  const wobble = detector.observe(mappedState(), 1520);
+  assert.equal(wobble.phase, gestures.MODE2_GESTURE_PHASE.ARMING);
+  assert.ok(wobble.armingProgress > 0.5);
+
+  const recovered = detector.observe(corner, 1600);
+  assert.equal(recovered.phase, gestures.MODE2_GESTURE_PHASE.ARMING);
+  const armed = detector.observe(corner, 3000);
+  assert.equal(armed.phase, gestures.MODE2_GESTURE_PHASE.ARMED);
+});
+
+test("releasing the sticks beyond the grace period still cancels arming", () => {
+  const detector = new gestures.Mode2GestureDetector();
+  const corner = mappedState({
+    throttle: -0.8,
+    yaw: 0.65,
+    pitch: -0.8,
+    roll: -0.65,
+  });
+
+  detector.observe(corner, 0);
+  detector.observe(corner, 1000);
+  assert.equal(
+    detector.observe(mappedState(), 1200).phase,
+    gestures.MODE2_GESTURE_PHASE.READY,
   );
 });
 

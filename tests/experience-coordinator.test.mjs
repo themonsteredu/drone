@@ -188,6 +188,17 @@ test("box obstacles expose exact above-ground dimensions to the 3D scene", () =>
   assert.equal(marker.position.y - marker.size.y / 2, 0);
 });
 
+test("course gate visuals expose the exact trigger-plane normal", () => {
+  const initial = flightState();
+  const coordinator = new ExperienceCoordinator(initial);
+  coordinator.applyTeacherAction("reset_training", initial);
+
+  const thirdGate = coordinator
+    .getSnapshot()
+    .scene.markers.find((candidate) => candidate.id === "training-gate-3");
+  assert.deepEqual(thirdGate?.normal, { x: 1, y: 0, z: 0 });
+});
+
 test("controller loss pauses the exam clock and STOP reset is not a landing", () => {
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);

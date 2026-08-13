@@ -67,11 +67,11 @@ test("keeps browser hardware APIs in a client-only diagnostics component", async
   assert.match(simulator, /BUTTON_MAPPING_STORAGE_KEY/);
   assert.match(simulator, /controllerState\.buttonTransitions/);
   assert.doesNotMatch(simulator, /diagnostics\/button-event-journal/);
-  assert.match(flightController, /INPUT_STALE_AFTER_MS = 800/);
+  assert.match(flightController, /INPUT_STALE_AFTER_MS = 1_200/);
   assert.match(component, /startInputRequestPolling\(150\)/);
   assert.match(flightController, /ControllerState/);
   assert.match(visual, /DroneTransform/);
-  assert.match(settings, /바이로봇 기본 조종/);
+  assert.match(settings, /Mode 2 기본 조종/);
   assert.match(settings, /헤드리스 모드/);
   assert.match(settings, /자세 안정화/);
 });
@@ -136,4 +136,39 @@ test("product placeholders do not invent semantic packet mappings", async () => 
     assert.doesNotMatch(adapter, /pitch\s*:/);
     assert.doesNotMatch(adapter, /roll\s*:/);
   }
+});
+
+test("student-facing copy omits the removed controller brand word", async () => {
+  const files = [
+    "../README.md",
+    "../app/layout.tsx",
+    "../src/components/byrobot-operation-capture.tsx",
+    "../src/components/controller-diagnostics.tsx",
+    "../src/components/drone-simulator.tsx",
+    "../src/components/flight-settings-panel.tsx",
+    "../src/controllers/profiles/byrobot-profiles.ts",
+  ];
+  const sources = await Promise.all(
+    files.map((file) => readFile(new URL(file, import.meta.url), "utf8")),
+  );
+
+  const removedWord = /\uBC14\uC774\uB85C\uBD07/;
+  for (const source of sources) assert.doesNotMatch(source, removedWord);
+});
+
+test("3D gates use the same normal vector as their sensor plane", async () => {
+  const [coordinator, visual] = await Promise.all([
+    readFile(
+      new URL("../src/simulator/experience-coordinator.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/components/drone-three-visual.tsx", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(coordinator, /normal: gate\.normal/);
+  assert.match(visual, /marker\.normal\?\.x/);
+  assert.match(visual, /setFromUnitVectors\(FORWARD, normal\)/);
 });

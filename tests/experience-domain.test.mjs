@@ -125,11 +125,11 @@ test("training and certification courses expose three ordered gates and precisio
       "box",
       `${obstacle.id} must expose its exact height to the scene`,
     );
-    assert.equal(obstacle.volume.max.y - obstacle.volume.min.y, 12);
+    assert.equal(obstacle.volume.max.y - obstacle.volume.min.y, 24);
   }
 });
 
-test("gate pass requires a forward plane crossing through the clear opening", () => {
+test("gate pass accepts either plane direction through the clear opening", () => {
   const gate = BASIC_TRAINING_COURSE.gates[0];
   const clear = detectGateIntersection(
     { x: 0, y: gate.center.y, z: 4 },
@@ -147,7 +147,7 @@ test("gate pass requires a forward plane crossing through the clear opening", ()
     gate,
   );
   assert.equal(clear.kind, "clear");
-  assert.equal(backwards.kind, "wrong_direction");
+  assert.equal(backwards.kind, "clear");
   assert.equal(rim.kind, "ring");
   assert.equal(isPointInsideGateTrigger(gate.center, gate, 0.22), true);
   assert.equal(
@@ -173,6 +173,34 @@ test("ordered tracker ignores a later gate until the expected gate is passed", (
   );
   assert.deepEqual(first.snapshot.passedGateIds, ["training-gate-1"]);
   assert.equal(first.events[0].type, "gatePassed");
+});
+
+test("the third gate sensor accepts a drone centered in its visible trigger", () => {
+  const tracker = new CourseTracker(BASIC_TRAINING_COURSE);
+  const [first, second, third] = BASIC_TRAINING_COURSE.gates;
+  tracker.update(
+    { x: first.center.x, y: first.center.y, z: first.center.z - 1 },
+    { x: first.center.x, y: first.center.y, z: first.center.z + 1 },
+    1,
+  );
+  tracker.update(
+    { x: second.center.x, y: second.center.y, z: second.center.z - 1 },
+    { x: second.center.x, y: second.center.y, z: second.center.z + 1 },
+    2,
+  );
+  const update = tracker.update(third.center, third.center, 3);
+
+  assert.deepEqual(update.snapshot.passedGateIds, [
+    "training-gate-1",
+    "training-gate-2",
+    "training-gate-3",
+  ]);
+  assert.equal(
+    update.events.some(
+      (event) => event.type === "gatePassed" && event.gateId === third.id,
+    ),
+    true,
+  );
 });
 
 test("ring and obstacle contacts emit debounced collision events", () => {

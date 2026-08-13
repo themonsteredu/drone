@@ -131,7 +131,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       volume: {
         shape: "box",
         min: { x: -2.2, y: 0, z: 7.2 },
-        max: { x: -1.75, y: 12, z: 7.65 },
+        max: { x: -1.75, y: 24, z: 7.65 },
       },
     },
     {
@@ -140,7 +140,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       volume: {
         shape: "box",
         min: { x: 4.2, y: 0, z: 7.2 },
-        max: { x: 4.65, y: 12, z: 7.65 },
+        max: { x: 4.65, y: 24, z: 7.65 },
       },
     },
   ],

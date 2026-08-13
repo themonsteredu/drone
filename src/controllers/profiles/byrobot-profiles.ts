@@ -133,7 +133,7 @@ function createProfile(
 
 export const SMART_CONTROLLER_PROFILE = createProfile(
   "byrobot-smart-controller",
-  "바이로봇 스마트 조종기",
+  "스마트 조종기",
   ["byrobot-smart-controller"],
   "unverified",
   "The current product adapter is hint-matched; its USB/product identity and executable operation button values are not verified.",
@@ -149,7 +149,7 @@ export const PRC95_PROFILE = createProfile(
 
 export const BATTLE_DRONE_PROFILE = createProfile(
   "byrobot-battle-drone",
-  "바이로봇 배틀드론 조종기",
+  "배틀드론 조종기",
   ["byrobot-battle-drone"],
   "candidate",
   "The adapter can identify an official model number, but the manual's physical button number has not been linked to a USB 0x70 button bit.",
@@ -186,7 +186,7 @@ export const BATTLE_DRONE_PROFILE = createProfile(
 
 export const GENERIC_BYROBOT_PROFILE = createProfile(
   "byrobot-generic",
-  "바이로봇 조종기(모델 미확인)",
+  "조종기(모델 미확인)",
   ["byrobot-serial-generic-coding-e-candidate"],
   "unverified",
   "A valid strict input codec can enable axes, but it must not establish a product model or default operation buttons.",

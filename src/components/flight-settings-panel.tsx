@@ -31,7 +31,7 @@ const CONTROL_MODE_OPTIONS: ReadonlyArray<{
   value: ControllerControlMode;
   label: string;
 }> = [
-  { value: "byrobot", label: "바이로봇 기본 조종" },
+  { value: "byrobot", label: "Mode 2 기본 조종" },
   { value: "custom", label: "사용자 설정" },
 ];
 

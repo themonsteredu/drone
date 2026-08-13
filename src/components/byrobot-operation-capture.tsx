@@ -167,7 +167,7 @@ export function ByrobotOperationCapture({
       <div className="panel-heading">
         <div>
           <span>CONTROLLER PROFILE EVIDENCE</span>
-          <h2 id="operation-capture-title">바이로봇 기본 조작 확인</h2>
+          <h2 id="operation-capture-title">조종기 기본 조작 확인</h2>
         </div>
         <span className="candidate-tag">패킷 기록 전용</span>
       </div>

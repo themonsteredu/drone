@@ -144,14 +144,15 @@ test("Mode 2 arming accepts shorter horizontal travel at a real diagonal", () =>
       roll: -inward,
     });
 
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.51, 0.65)), false);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.8, 0.41)), false);
-  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.52, 0.42)), true);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.39, 0.65)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.8, 0.24)), false);
+  assert.equal(gestures.isMode2ArmingGestureActive(corner(0.4, 0.25)), true);
   assert.equal(gestures.isMode2ArmingGestureActive(corner(0.8, 0.55)), true);
   assert.equal(gestures.isMode2ArmingGestureActive(corner(1, 1)), true);
   const config = gestures.resolveMode2GestureConfig();
-  assert.equal(config.armingDownThreshold, 0.52);
-  assert.equal(config.armingInwardThreshold, 0.42);
+  assert.equal(config.armingDownThreshold, 0.4);
+  assert.equal(config.armingInwardThreshold, 0.25);
+  assert.equal(config.armingReleaseGraceMs, 650);
 });
 
 test("a momentary analog wobble does not erase the three-second hold", () => {
@@ -187,7 +188,7 @@ test("releasing the sticks beyond the grace period still cancels arming", () => 
   detector.observe(corner, 0);
   detector.observe(corner, 1000);
   assert.equal(
-    detector.observe(mappedState(), 1350).phase,
+    detector.observe(mappedState(), 1700).phase,
     gestures.MODE2_GESTURE_PHASE.READY,
   );
 });
@@ -315,6 +316,21 @@ test("a corner held through a live 0x71 stream completes the three-second hold",
 
   // The accepted-joystick timestamp advances on every CRC-valid packet, so a
   // stick the student is still holding keeps reporting fresh input.
+  for (let now = 0; now <= 3000; now += 100) {
+    flightController.setControllerState(mappedState(ARMING_CORNER), true, now);
+    flightController.step(0.1, now, true);
+  }
+
+  assert.equal(flightController.getState().phase, model.FLIGHT_PHASE.ARMED);
+  assert.equal(flightController.getMode2GestureState().armingProgress, 1);
+});
+
+test("a persisted user axis mapping does not disable semantic Mode 2 arming", () => {
+  const flightController = new controller.FlightController({
+    ...DEFAULT_PREFERENCES,
+    controlMode: "custom",
+  });
+
   for (let now = 0; now <= 3000; now += 100) {
     flightController.setControllerState(mappedState(ARMING_CORNER), true, now);
     flightController.step(0.1, now, true);

@@ -91,8 +91,9 @@ export function isPointInsideGateTrigger(
 
 /**
  * Sweeps the drone between two frames so fast movement cannot skip a gate.
- * A pass is accepted only from the negative to positive side of the gate's
- * normal and only through the clear inner opening.
+ * A pass is accepted from either side of the gate plane when the ordered gate
+ * is crossed through its clear inner opening. Course order, rather than an
+ * invisible one-way plane, guides the student route.
  */
 export function detectGateIntersection(
   previous: Vector3,
@@ -106,18 +107,13 @@ export function detectGateIntersection(
   const previousSide = dot(previousOffset, normal);
   const currentSide = dot(currentOffset, normal);
   const movement = subtract(current, previous);
-  const forwardProgress = dot(movement, normal);
-
   const crossedPlane =
-    previousSide <= 0 && currentSide >= 0 && Math.abs(currentSide - previousSide) > EPSILON;
+    ((previousSide <= 0 && currentSide >= 0) ||
+      (previousSide >= 0 && currentSide <= 0)) &&
+    Math.abs(currentSide - previousSide) > EPSILON;
 
   if (!crossedPlane) {
-    const reversed = previousSide >= 0 && currentSide <= 0 && forwardProgress < -EPSILON;
-    return reversed ? { kind: "wrong_direction" } : { kind: "none" };
-  }
-
-  if (forwardProgress <= EPSILON) {
-    return { kind: "wrong_direction" };
+    return { kind: "none" };
   }
 
   const interpolation = clamp(-previousSide / (currentSide - previousSide), 0, 1);
@@ -281,10 +277,16 @@ export class CourseTracker {
 
     for (const gate of orderedGates) {
       const intersection = detectGateIntersection(previous, current, gate, this.droneRadius);
+      const insideExpectedTrigger =
+        gate.id === expectedGate?.id &&
+        isPointInsideGateTrigger(current, gate, this.droneRadius);
       if (intersection.kind === "ring") {
         this.recordCollision(gate.id, "ring", atSeconds, events);
       }
-      if (intersection.kind === "clear" && gate.id === expectedGate?.id) {
+      if (
+        gate.id === expectedGate?.id &&
+        (intersection.kind === "clear" || insideExpectedTrigger)
+      ) {
         this.passedGateIds.add(gate.id);
         this.nextGateIndex += 1;
         events.push({ type: "gatePassed", atSeconds, gateId: gate.id, order: gate.order });

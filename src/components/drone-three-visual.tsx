@@ -545,6 +545,12 @@ function addPad(marker: DroneSceneMarker, group: THREE.Group): void {
 function addGate(marker: DroneSceneMarker, group: THREE.Group): void {
   const radius = marker.radius ?? 2.1;
   const color = marker.completed ? 0x48bf73 : marker.active ? 0x2b77ff : 0xff9f43;
+  const normal = new THREE.Vector3(
+    marker.normal?.x ?? 0,
+    marker.normal?.y ?? 0,
+    marker.normal?.z ?? 1,
+  ).normalize();
+  const gateSide = new THREE.Vector3(normal.z, 0, -normal.x).normalize();
   const gate = new THREE.Mesh(
     new THREE.TorusGeometry(radius, 0.13, 10, 38),
     new THREE.MeshStandardMaterial({
@@ -556,17 +562,18 @@ function addGate(marker: DroneSceneMarker, group: THREE.Group): void {
     }),
   );
   gate.position.set(marker.position.x, marker.position.y, marker.position.z);
+  gate.quaternion.setFromUnitVectors(FORWARD, normal);
   group.add(gate);
 
-  for (const side of [-1, 1]) {
+  for (const direction of [-1, 1]) {
     const post = new THREE.Mesh(
       new THREE.CylinderGeometry(0.06, 0.08, Math.max(0.5, marker.position.y), 7),
       meshMaterial(color, 0.62, 0.12),
     );
     post.position.set(
-      marker.position.x + side * radius,
+      marker.position.x + gateSide.x * direction * radius,
       marker.position.y / 2,
-      marker.position.z,
+      marker.position.z + gateSide.z * direction * radius,
     );
     group.add(post);
   }

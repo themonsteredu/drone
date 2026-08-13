@@ -21,9 +21,11 @@ import {
   type Mode2GestureSnapshot,
 } from "./mode2-gesture-detector";
 
-// Serial polling requests Joystick and Button in turn. 800 ms tolerates one
-// delayed response without allowing an old held position to complete arming.
-export const INPUT_STALE_AFTER_MS = 800;
+// Serial polling requests Joystick and Button in turn. A classroom USB link
+// can occasionally delay a response while the sticks are held still, so keep
+// a bounded 1.2 second window without allowing a single sample to complete a
+// three-second arming hold.
+export const INPUT_STALE_AFTER_MS = 1_200;
 
 const ZERO_INPUT: Readonly<FlightControlInput> = {
   throttle: 0,
@@ -169,43 +171,37 @@ export class FlightController {
     if (!inputIsFresh && this.inputWasFresh) this.neutralize();
     this.inputWasFresh = inputIsFresh;
 
-    if (this.preferences.controlMode === "byrobot") {
-      // The documented three-second hold must be continuous, so a stale sample
-      // can never stand in for a stick the student is still holding. The 0x71
-      // stream refreshes `inputUpdatedAt` on every accepted packet, not only on
-      // change, so a genuinely held corner stays fresh on its own.
-      const gesture = this.mode2GestureDetector.observe(
-        inputIsFresh ? this.controllerState : null,
-        now,
-        this.mode2Bindings,
-      );
-      if (
-        this.state.phase === FLIGHT_PHASE.READY &&
-        gesture.phase === FLIGHT_PHASE.ARMING
-      ) {
-        this.state = applyFlightCommand(this.state, "begin-arming");
-      }
-      if (
-        this.state.phase === FLIGHT_PHASE.ARMING &&
-        gesture.phase === FLIGHT_PHASE.READY
-      ) {
-        this.state = applyFlightCommand(this.state, "cancel-arming");
-      }
-      if (gesture.armed) {
-        this.state = applyFlightCommand(this.state, "arm");
-      }
-      if (
-        gesture.emergencyActivated &&
-        getFlightActionAvailability(
-          this.state.phase,
-          this.state.emergencyLatched,
-        ).emergency
-      ) {
-        this.state = applyFlightCommand(this.state, "emergency");
-      }
-    } else if (this.state.phase === FLIGHT_PHASE.ARMING) {
-      this.mode2GestureDetector.reset();
+    // The gesture consumes semantic ControllerState values, so it remains
+    // valid for both the default profile and a user-owned axis mapping. A
+    // persisted custom mapping must never silently disable stick arming.
+    const gesture = this.mode2GestureDetector.observe(
+      inputIsFresh ? this.controllerState : null,
+      now,
+      this.mode2Bindings,
+    );
+    if (
+      this.state.phase === FLIGHT_PHASE.READY &&
+      gesture.phase === FLIGHT_PHASE.ARMING
+    ) {
+      this.state = applyFlightCommand(this.state, "begin-arming");
+    }
+    if (
+      this.state.phase === FLIGHT_PHASE.ARMING &&
+      gesture.phase === FLIGHT_PHASE.READY
+    ) {
       this.state = applyFlightCommand(this.state, "cancel-arming");
+    }
+    if (gesture.armed) {
+      this.state = applyFlightCommand(this.state, "arm");
+    }
+    if (
+      gesture.emergencyActivated &&
+      getFlightActionAvailability(
+        this.state.phase,
+        this.state.emergencyLatched,
+      ).emergency
+    ) {
+      this.state = applyFlightCommand(this.state, "emergency");
     }
 
     const previousPhase = this.state.phase;

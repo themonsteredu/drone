@@ -2097,7 +2097,7 @@ export function ControllerDiagnosticsPage() {
       </details>
 
       <footer className="pilot-footer">
-        <span>바이로봇 미래항공모빌리티 운항 체험</span>
+        <span>미래항공모빌리티 운항 체험</span>
         <span>조종 훈련 · 자격시험 · 교육용 임무</span>
       </footer>
     </main>

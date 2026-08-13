@@ -55,9 +55,9 @@ export const DEFAULT_MODE2_GESTURE_CONFIG: Readonly<Mode2GestureConfig> =
     // A diagonal stick does not report the same magnitude on both axes on
     // every BYROBOT controller. Keep the vertical threshold deliberate while
     // allowing the shorter horizontal travel observed on real hardware.
-    armingDownThreshold: 0.52,
-    armingInwardThreshold: 0.42,
-    armingReleaseGraceMs: 300,
+    armingDownThreshold: 0.4,
+    armingInwardThreshold: 0.25,
+    armingReleaseGraceMs: 650,
     emergencyThrottleThreshold: -0.75,
   });
 
@@ -90,19 +90,19 @@ export function resolveMode2GestureConfig(
   return {
     armingHoldMs: Math.max(0, finiteOr(merged.armingHoldMs, 3000)),
     armingDownThreshold: clamp(
-      Math.abs(finiteOr(merged.armingDownThreshold, 0.52)),
+      Math.abs(finiteOr(merged.armingDownThreshold, 0.4)),
       0.2,
       1,
     ),
     armingInwardThreshold: clamp(
-      Math.abs(finiteOr(merged.armingInwardThreshold, 0.42)),
+      Math.abs(finiteOr(merged.armingInwardThreshold, 0.25)),
       0.2,
       1,
     ),
     armingReleaseGraceMs: clamp(
-      finiteOr(merged.armingReleaseGraceMs, 300),
+      finiteOr(merged.armingReleaseGraceMs, 650),
       0,
-      500,
+      1_000,
     ),
     emergencyThrottleThreshold: clamp(
       finiteOr(merged.emergencyThrottleThreshold, -0.75),

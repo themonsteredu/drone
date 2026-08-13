@@ -841,6 +841,7 @@ export class ExperienceCoordinator {
           id: gate.id,
           kind: "gate",
           position: gate.center,
+          normal: gate.normal,
           radius: gate.outerRadius,
           label: `Gate ${gate.order}`,
           active: index === this.courseSnapshot.nextGateIndex,

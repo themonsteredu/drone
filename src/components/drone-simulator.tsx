@@ -1313,7 +1313,7 @@ export function DroneSimulator({
             ) : domainStage === "CONTROL_GUIDE" ? (
               <StudentGuideOverlay
                 kind="tutorial"
-                title="바이로봇 Mode 2 조종법"
+                title="Mode 2 조종법"
                 instruction="왼쪽 스틱은 고도와 회전, 오른쪽 스틱은 전후·좌우 이동을 조종합니다."
                 detail="첫 단계에서는 양쪽 스틱을 아래쪽 안으로 모아 3초 동안 시동을 겁니다."
                 primaryAction={{

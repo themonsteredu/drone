@@ -161,7 +161,7 @@ export function calculateMissionResult(
     profileReason: profile.reason,
     careerMessage:
       mission.kind === "medical_delivery"
-        ? "도심 항공물류 운항 담당자는 환자에게 필요한 물품이 제때 도착하도록 항로, 기상, 화물 상태와 착륙 안전을 함께 판단합니다."
+        ? "재난 의료물류 운항 담당자는 육상 접근이 어려운 곳에도 필요한 물품이 제때 도착하도록 항로, 기상, 화물 상태와 착륙 안전을 함께 판단합니다."
         : "재난 항공수색 운항 담당자는 현장 위험을 살피며 수색 순서와 비행 경로를 정하고, 정확한 위치 정보를 구조팀에 전달합니다.",
   };
 }

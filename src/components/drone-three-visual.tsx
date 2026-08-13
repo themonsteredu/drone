@@ -9,6 +9,10 @@ import {
   type DroneScenePresentation,
 } from "../simulator/scene-presentation";
 import { selectRenderQuality } from "../simulator/render-quality";
+import {
+  buildMissionEnvironment,
+  environmentPalette,
+} from "./drone-mission-environments";
 import { DroneVisual as DroneCanvasFallback } from "./drone-visual";
 
 interface DroneThreeVisualProps {
@@ -190,37 +194,38 @@ function createDroneModel(shadows: boolean): DroneModel {
   return { root, tilt, rotors, shadow };
 }
 
-function addSkyDome(scene: THREE.Scene): void {
+function addSkyDome(scene: THREE.Scene): THREE.ShaderMaterial {
+  const skyMaterial = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x57b8f4) },
+      horizonColor: { value: new THREE.Color(0xeaf8ff) },
+      lowerColor: { value: new THREE.Color(0xf7fbf4) },
+    },
+    vertexShader: `
+      varying float vHeight;
+      void main() {
+        vHeight = normalize(position).y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 horizonColor;
+      uniform vec3 lowerColor;
+      varying float vHeight;
+      void main() {
+        float skyMix = smoothstep(-0.02, 0.72, vHeight);
+        float groundMix = smoothstep(-0.18, 0.02, vHeight);
+        vec3 lower = mix(lowerColor, horizonColor, groundMix);
+        gl_FragColor = vec4(mix(lower, topColor, skyMix), 1.0);
+      }
+    `,
+  });
   const dome = new THREE.Mesh(
     new THREE.SphereGeometry(135, 20, 12),
-    new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      depthWrite: false,
-      uniforms: {
-        topColor: { value: new THREE.Color(0x57b8f4) },
-        horizonColor: { value: new THREE.Color(0xeaf8ff) },
-        lowerColor: { value: new THREE.Color(0xf7fbf4) },
-      },
-      vertexShader: `
-        varying float vHeight;
-        void main() {
-          vHeight = normalize(position).y;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 horizonColor;
-        uniform vec3 lowerColor;
-        varying float vHeight;
-        void main() {
-          float skyMix = smoothstep(-0.02, 0.72, vHeight);
-          float groundMix = smoothstep(-0.18, 0.02, vHeight);
-          vec3 lower = mix(lowerColor, horizonColor, groundMix);
-          gl_FragColor = vec4(mix(lower, topColor, skyMix), 1.0);
-        }
-      `,
-    }),
+    skyMaterial,
   );
   scene.add(dome);
 
@@ -230,9 +235,58 @@ function addSkyDome(scene: THREE.Scene): void {
   );
   sun.position.set(-34, 28, 74);
   scene.add(sun);
+  return skyMaterial;
 }
 
-function addRunway(scene: THREE.Scene): void {
+function applyAtmosphere(
+  scene: THREE.Scene,
+  skyMaterial: THREE.ShaderMaterial,
+  environment: NonNullable<DroneScenePresentation["environment"]>,
+): void {
+  const palette = environmentPalette(environment);
+  skyMaterial.uniforms.topColor.value.setHex(palette.top);
+  skyMaterial.uniforms.horizonColor.value.setHex(palette.horizon);
+  skyMaterial.uniforms.lowerColor.value.setHex(palette.lower);
+  scene.background = new THREE.Color(palette.horizon);
+  scene.fog = new THREE.Fog(palette.fog, palette.fogNear, palette.fogFar);
+}
+
+function createMedicalCargoBox(): THREE.Group {
+  const cargo = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(0.72, 0.4, 0.58),
+    meshMaterial(0xe9ece9, 0.8, 0.03),
+  );
+  cargo.add(box);
+  const strapMaterial = new THREE.MeshBasicMaterial({ color: 0xd84642 });
+  const strapX = new THREE.Mesh(
+    new THREE.BoxGeometry(0.14, 0.41, 0.59),
+    strapMaterial,
+  );
+  const strapZ = new THREE.Mesh(
+    new THREE.BoxGeometry(0.73, 0.41, 0.13),
+    strapMaterial,
+  );
+  cargo.add(strapX, strapZ);
+  const latch = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.08, 0.1),
+    meshMaterial(0x24435a, 0.5, 0.18),
+  );
+  latch.position.set(0, 0.23, -0.14);
+  cargo.add(latch);
+  for (const x of [-0.22, 0.22]) {
+    const mount = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 0.3, 7),
+      meshMaterial(0x203746, 0.52, 0.22),
+    );
+    mount.position.set(x, 0.34, 0);
+    cargo.add(mount);
+  }
+  cargo.visible = false;
+  return cargo;
+}
+
+function addRunway(scene: THREE.Object3D): void {
   const groundMaterial = meshMaterial(0x87aa78, 1, 0);
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(150, 190),
@@ -297,7 +351,7 @@ function addRunway(scene: THREE.Scene): void {
 }
 
 function addHillsAndTrees(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   treeCount: number,
   shadows: boolean,
 ): void {
@@ -439,7 +493,7 @@ function addHillsAndTrees(
   scene.add(trunks, lowerCrowns, upperCrowns);
 }
 
-function addSkyDetails(scene: THREE.Scene): void {
+function addSkyDetails(scene: THREE.Object3D): void {
   const cloudMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
@@ -681,6 +735,27 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
       group.add(windowPane);
     }
   }
+
+  const sideColumns = Math.max(1, Math.min(3, Math.floor(depth / 1.5)));
+  for (const side of [-1, 1]) {
+    for (let row = 0; row < windowRows; row += 1) {
+      for (let column = 0; column < sideColumns; column += 1) {
+        const sideWindow = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.42, 0.34),
+          windowMaterial,
+        );
+        sideWindow.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        sideWindow.position.set(
+          marker.position.x + side * (width / 2 + 0.025),
+          centerY - height * 0.3 +
+            (row / Math.max(1, windowRows - 1)) * height * 0.58,
+          marker.position.z - depth * 0.3 +
+            (column / Math.max(1, sideColumns - 1)) * depth * 0.6,
+        );
+        group.add(sideWindow);
+      }
+    }
+  }
 }
 
 function addRubble(marker: DroneSceneMarker, group: THREE.Group): void {
@@ -714,6 +789,102 @@ function addRubble(marker: DroneSceneMarker, group: THREE.Group): void {
   );
   warning.position.set(marker.position.x, 0.12, marker.position.z - depth * 0.46);
   group.add(warning);
+}
+
+function addDamagedBuilding(
+  marker: DroneSceneMarker,
+  group: THREE.Group,
+): void {
+  const width = Math.max(2.2, marker.size?.x ?? 3.5);
+  const height = Math.max(3.2, marker.size?.y ?? 4.5);
+  const depth = Math.max(2.2, marker.size?.z ?? 3.5);
+  const concrete = meshMaterial(0x69777d, 0.92, 0.02);
+  const left = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.62, height, depth),
+    concrete,
+  );
+  left.position.set(
+    marker.position.x - width * 0.19,
+    height / 2 + 0.02,
+    marker.position.z,
+  );
+  group.add(left);
+
+  const rightHeight = height * 0.58;
+  const right = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.3, rightHeight, depth * 0.82),
+    concrete.clone(),
+  );
+  right.position.set(
+    marker.position.x + width * 0.34,
+    rightHeight / 2 + 0.02,
+    marker.position.z + depth * 0.06,
+  );
+  right.rotation.z = -0.045;
+  group.add(right);
+
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.65, 0.18, depth * 1.02),
+    meshMaterial(0x3f4d54, 0.78, 0.08),
+  );
+  roof.position.set(
+    marker.position.x - width * 0.18,
+    height + 0.1,
+    marker.position.z,
+  );
+  group.add(roof);
+
+  const windowMaterial = new THREE.MeshBasicMaterial({ color: 0x7ca8b6 });
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 2; column += 1) {
+      const pane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.42, 0.36),
+        windowMaterial,
+      );
+      pane.position.set(
+        marker.position.x - width * (0.34 - column * 0.22),
+        1.1 + row * Math.max(0.75, height * 0.2),
+        marker.position.z - depth / 2 - 0.03,
+      );
+      group.add(pane);
+    }
+  }
+  addRubble(
+    {
+      ...marker,
+      position: {
+        x: marker.position.x + width * 0.48,
+        y: 0,
+        z: marker.position.z - depth * 0.28,
+      },
+      size: { x: width * 0.62, y: Math.min(1.4, height * 0.25), z: depth * 0.6 },
+    },
+    group,
+  );
+}
+
+function addRockSlope(marker: DroneSceneMarker, group: THREE.Group): void {
+  const width = Math.max(2, marker.size?.x ?? 3.5);
+  const height = Math.max(2.8, marker.size?.y ?? 5.5);
+  const depth = Math.max(2, marker.size?.z ?? 3.5);
+  const stone = meshMaterial(0x7f846f, 1, 0);
+  const slope = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), stone);
+  slope.scale.set(width * 0.46, height * 0.5, depth * 0.5);
+  slope.position.set(marker.position.x, height * 0.5, marker.position.z);
+  slope.rotation.set(0.08, marker.position.x * 0.13, -0.05);
+  group.add(slope);
+
+  const outcrop = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(Math.min(width, depth) * 0.38, 0),
+    meshMaterial(0x9a8a70, 1, 0),
+  );
+  outcrop.scale.y = 0.62;
+  outcrop.position.set(
+    marker.position.x + width * 0.32,
+    Math.min(1.4, height * 0.24),
+    marker.position.z - depth * 0.28,
+  );
+  group.add(outcrop);
 }
 
 function addCommandCenter(marker: DroneSceneMarker, group: THREE.Group): void {
@@ -752,6 +923,7 @@ function addCommandCenter(marker: DroneSceneMarker, group: THREE.Group): void {
 function addSearchTarget(marker: DroneSceneMarker, group: THREE.Group): void {
   const radius = marker.radius ?? 1.3;
   const color = marker.completed ? 0x48bf73 : marker.active ? 0xffb12d : 0x52a4ff;
+  const markerY = Math.max(0.12, marker.position.y);
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(radius, 0.1, 8, 30),
     new THREE.MeshStandardMaterial({
@@ -761,7 +933,7 @@ function addSearchTarget(marker: DroneSceneMarker, group: THREE.Group): void {
     }),
   );
   ring.rotation.x = Math.PI / 2;
-  ring.position.set(marker.position.x, 0.1, marker.position.z);
+  ring.position.set(marker.position.x, markerY, marker.position.z);
   group.add(ring);
   const beacon = new THREE.Mesh(
     new THREE.CylinderGeometry(0.04, radius * 0.55, 3.8, 18, 1, true),
@@ -773,8 +945,35 @@ function addSearchTarget(marker: DroneSceneMarker, group: THREE.Group): void {
       depthWrite: false,
     }),
   );
-  beacon.position.set(marker.position.x, 1.9, marker.position.z);
+  beacon.position.set(marker.position.x, markerY + 1.9, marker.position.z);
   group.add(beacon);
+
+  const signalPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.045, 1.3, 7),
+    meshMaterial(0x394b57, 0.7, 0.12),
+  );
+  signalPole.position.set(
+    marker.position.x + radius * 0.42,
+    markerY + 0.65,
+    marker.position.z,
+  );
+  group.add(signalPole);
+
+  const signalFlag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.72, 0.4),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: marker.active ? 0.32 : 0.08,
+      side: THREE.DoubleSide,
+    }),
+  );
+  signalFlag.position.set(
+    signalPole.position.x - 0.34,
+    markerY + 1.08,
+    marker.position.z,
+  );
+  group.add(signalFlag);
 }
 
 function addWindZone(marker: DroneSceneMarker, group: THREE.Group): void {
@@ -855,6 +1054,12 @@ function rebuildMarkers(
       case "rubble":
         addRubble(marker, group);
         break;
+      case "damaged-building":
+        addDamagedBuilding(marker, group);
+        break;
+      case "rock-slope":
+        addRockSlope(marker, group);
+        break;
       case "command-center":
         addCommandCenter(marker, group);
         break;
@@ -885,6 +1090,8 @@ const CAMERA_BLOCKING_MARKERS = new Set<DroneSceneMarker["kind"]>([
   "building",
   "hospital",
   "rubble",
+  "damaged-building",
+  "rock-slope",
   "command-center",
 ]);
 
@@ -1035,16 +1242,36 @@ export function DroneThreeVisual({
     }
     scene.add(sun);
 
-    addSkyDome(scene);
-    addRunway(scene);
-    addHillsAndTrees(scene, quality.treeCount, quality.shadows);
-    addSkyDetails(scene);
+    const skyMaterial = addSkyDome(scene);
+    const trainingEnvironment = new THREE.Group();
+    trainingEnvironment.name = "training-environment";
+    addRunway(trainingEnvironment);
+    addHillsAndTrees(
+      trainingEnvironment,
+      quality.treeCount,
+      quality.shadows,
+    );
+    addSkyDetails(trainingEnvironment);
+    scene.add(trainingEnvironment);
+
+    let activeEnvironment: NonNullable<
+      DroneScenePresentation["environment"]
+    > = "training";
+    let missionEnvironment = buildMissionEnvironment(activeEnvironment, {
+      treeCount: quality.treeCount,
+      shadows: quality.shadows,
+    });
+    scene.add(missionEnvironment);
+    applyAtmosphere(scene, skyMaterial, activeEnvironment);
 
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
 
     const drone = createDroneModel(quality.shadows);
     scene.add(drone.root, drone.shadow);
+    const medicalCargo = createMedicalCargoBox();
+    configureShadow(medicalCargo, quality.shadows);
+    scene.add(medicalCargo);
 
     const collisionLight = new THREE.PointLight(0xff3d36, 0, 18, 2);
     scene.add(collisionLight);
@@ -1058,6 +1285,11 @@ export function DroneThreeVisual({
     const targetInterval = 1000 / quality.targetFps;
     const desiredCamera = new THREE.Vector3();
     const desiredLook = new THREE.Vector3();
+    const cargoStart = new THREE.Vector3();
+    const cargoTarget = new THREE.Vector3();
+    const cargoLoadedOffset = new THREE.Vector3(0, -0.22, -0.52);
+    let cargoState: NonNullable<DroneScenePresentation["cargoState"]> = "none";
+    let cargoTransitionStartedAt = 0;
 
     const resize = () => {
       const rect = container.getBoundingClientRect();
@@ -1098,6 +1330,21 @@ export function DroneThreeVisual({
 
       const transform = readTransformRef.current();
       const presentation = readSceneRef.current?.() ?? EMPTY_DRONE_SCENE;
+      const requestedEnvironment = presentation.environment ?? "training";
+      if (requestedEnvironment !== activeEnvironment) {
+        activeEnvironment = requestedEnvironment;
+        trainingEnvironment.visible = activeEnvironment === "training";
+        scene.remove(missionEnvironment);
+        disposeGroup(missionEnvironment);
+        missionEnvironment = buildMissionEnvironment(activeEnvironment, {
+          treeCount: quality.treeCount,
+          shadows: quality.shadows,
+        });
+        scene.add(missionEnvironment);
+        applyAtmosphere(scene, skyMaterial, activeEnvironment);
+        camera.fov = activeEnvironment === "training" ? 48 : 54;
+        camera.updateProjectionMatrix();
+      }
       const grounded = transform.position.y <= 0.02;
       const signature = markerSignature(presentation);
       if (signature !== markerState) {
@@ -1118,6 +1365,40 @@ export function DroneThreeVisual({
         transform.rotation.yaw,
         reducedMotion ? 1 : 0.22,
       );
+
+      const requestedCargoState = presentation.cargoState ?? "none";
+      if (requestedCargoState !== cargoState) {
+        cargoState = requestedCargoState;
+        cargoTransitionStartedAt = time;
+        cargoStart.copy(drone.root.position).add(cargoLoadedOffset);
+      }
+      if (cargoState === "none") {
+        medicalCargo.visible = false;
+      } else if (cargoState === "loaded") {
+        medicalCargo.visible = true;
+        cargoTarget.copy(cargoLoadedOffset).applyAxisAngle(UP, drone.root.rotation.y);
+        medicalCargo.position.copy(drone.root.position).add(cargoTarget);
+        medicalCargo.rotation.y = drone.root.rotation.y;
+      } else {
+        const landingMarker = presentation.markers.find(
+          (marker) => marker.kind === "landing-pad",
+        );
+        cargoTarget.set(
+          (landingMarker?.position.x ?? transform.position.x) + 2.2,
+          0.34,
+          (landingMarker?.position.z ?? transform.position.z) - 0.25,
+        );
+        const elapsed = Math.min(1, (time - cargoTransitionStartedAt) / 1500);
+        const eased = elapsed * elapsed * (3 - 2 * elapsed);
+        medicalCargo.visible = true;
+        medicalCargo.position.lerpVectors(cargoStart, cargoTarget, eased);
+        medicalCargo.position.y += Math.sin(eased * Math.PI) * 0.5;
+        medicalCargo.rotation.y = lerpAngle(
+          medicalCargo.rotation.y,
+          0,
+          reducedMotion ? 1 : 0.16,
+        );
+      }
       drone.tilt.rotation.x = THREE.MathUtils.lerp(
         drone.tilt.rotation.x,
         grounded ? 0 : transform.tilt.pitch,
@@ -1154,15 +1435,19 @@ export function DroneThreeVisual({
         const yaw = transform.rotation.yaw;
         const forwardX = Math.sin(yaw);
         const forwardZ = Math.cos(yaw);
+        const missionView = activeEnvironment !== "training";
+        const followDistance = missionView ? 8.9 : 7.4;
+        const cameraHeight = missionView ? 4.8 : 4.1;
+        const lookAhead = missionView ? 4.7 : 3.2;
         desiredCamera.set(
-          transform.position.x - forwardX * 7.4,
-          Math.max(4.6, transform.position.y + 4.1),
-          transform.position.z - forwardZ * 7.4,
+          transform.position.x - forwardX * followDistance,
+          Math.max(missionView ? 5.2 : 4.6, transform.position.y + cameraHeight),
+          transform.position.z - forwardZ * followDistance,
         );
         desiredLook.set(
-          transform.position.x + forwardX * 3.2,
-          transform.position.y + 0.9,
-          transform.position.z + forwardZ * 3.2,
+          transform.position.x + forwardX * lookAhead,
+          transform.position.y + (missionView ? 0.72 : 0.9),
+          transform.position.z + forwardZ * lookAhead,
         );
         avoidCameraObstacles(
           desiredCamera,
@@ -1201,6 +1486,8 @@ export function DroneThreeVisual({
       resizeObserver.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
       disposeGroup(markerGroup);
+      scene.remove(missionEnvironment);
+      disposeGroup(missionEnvironment);
       scene.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();
@@ -1232,7 +1519,7 @@ export function DroneThreeVisual({
       ref={containerRef}
       className="drone-three-scene"
       role="img"
-      aria-label="밝은 야외 훈련장에서 실제 조종 입력에 따라 비행하는 3차원 드론"
+      aria-label="훈련장과 미션별 항공모빌리티 환경에서 조종 입력에 따라 비행하는 3차원 드론"
       aria-describedby="flight-telemetry"
     />
   );

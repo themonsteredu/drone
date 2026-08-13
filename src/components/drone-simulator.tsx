@@ -390,6 +390,7 @@ export function DroneSimulator({
     "기능을 선택한 뒤 조종기 버튼을 눌러 설정할 수 있습니다.",
   );
   const [storageReady, setStorageReady] = useState(false);
+  const [teacherPreviewActive, setTeacherPreviewActive] = useState(false);
   const startedFromCoverRef = useRef(false);
 
   const profileHasDefaultButtons = useMemo(
@@ -792,6 +793,7 @@ export function DroneSimulator({
   }, [controlsEnabled, experienceCoordinator, refreshExperience, startImmediately]);
 
   const startExperience = useCallback(() => {
+    setTeacherPreviewActive(false);
     experienceCoordinator.start(controlsEnabled);
     refreshExperience();
   }, [controlsEnabled, experienceCoordinator, refreshExperience]);
@@ -834,6 +836,7 @@ export function DroneSimulator({
 
   const applyTeacherTestAction = useCallback(
     (action: TeacherTestAction) => {
+      setTeacherPreviewActive(true);
       experienceCoordinator.applyTeacherAction(
         TEACHER_SHORTCUT_MAP[action],
         flightController.getState(),
@@ -989,11 +992,20 @@ export function DroneSimulator({
         )
       : undefined;
   const missionLandingCenter = experience.mission?.landingZone.center;
-  const missionDestinationDistance = missionLandingCenter
+  const nextSearchTarget =
+    experience.mission?.kind === "disaster_search"
+      ? experience.mission.targets.find(
+          (target) =>
+            target.action === "mission_action" &&
+            !missionFoundTargetIds.has(target.id),
+        )
+      : undefined;
+  const missionGuidancePoint = nextSearchTarget?.position ?? missionLandingCenter;
+  const missionDestinationDistance = missionGuidancePoint
     ? Math.hypot(
-        telemetry.position.x - missionLandingCenter.x,
-        telemetry.position.y - missionLandingCenter.y,
-        telemetry.position.z - missionLandingCenter.z,
+        telemetry.position.x - missionGuidancePoint.x,
+        telemetry.position.y - missionGuidancePoint.y,
+        telemetry.position.z - missionGuidancePoint.z,
       )
     : 0;
   const missionInitialDistance =
@@ -1283,6 +1295,8 @@ export function DroneSimulator({
                 routePercent={missionRoutePercent}
                 collisionCount={missionCollisionCount}
                 destinationDistanceMeters={missionDestinationDistance}
+                altitudeMeters={telemetry.position.y}
+                batteryPercent={missionBattery}
                 windActive={Boolean(
                   experience.missionRuntime?.activeWindZoneIds.length,
                 )}
@@ -1296,7 +1310,7 @@ export function DroneSimulator({
                 onMissionAction={triggerMissionAction}
               />
             ) : null}
-            {domainStage !== "START" && !controlsEnabled ? (
+            {domainStage !== "START" && !controlsEnabled && !teacherPreviewActive ? (
               <StudentGuideOverlay
                 kind="connect"
                 title={

@@ -30,6 +30,8 @@ export interface MissionFlightOverlayProps {
   routePercent?: number;
   collisionCount: number;
   destinationDistanceMeters: number;
+  altitudeMeters: number;
+  batteryPercent: number;
   windActive: boolean;
   payloadIntegrityPercent: number;
   corridorViolationCount: number;
@@ -57,6 +59,8 @@ export function MissionFlightOverlay({
   routePercent,
   collisionCount,
   destinationDistanceMeters,
+  altitudeMeters,
+  batteryPercent,
   windActive,
   payloadIntegrityPercent,
   corridorViolationCount,
@@ -105,7 +109,7 @@ export function MissionFlightOverlay({
             <dl>
               <div><dt>임무 우선순위</dt><dd>{medical ? "긴급 · 안전" : "신속 · 정확"}</dd></div>
               <div><dt>제한 시간</dt><dd>{medical ? "3분" : "3분 30초"}</dd></div>
-              <div><dt>운항 환경</dt><dd>{medical ? "도심 · 강풍 구역" : "재난 잔해 · 제한 시야"}</dd></div>
+              <div><dt>운항 환경</dt><dd>{medical ? "산간 · 도로 단절 · 측풍" : "도심 재난 · 잔해 · 제한 시야"}</dd></div>
             </dl>
             {payload ? (
               <div className={styles.payloadCard}>
@@ -194,19 +198,37 @@ export function MissionFlightOverlay({
         {medical ? (
           <div className={payloadIntegrityPercent >= 70 ? styles.missionConditionGood : styles.missionConditionAlert}>
             <span aria-hidden="true">+</span>
-            <strong>화물 상태 {Math.round(payloadIntegrityPercent)}%</strong>
+            <strong>응급 의약품 · {operationPhase === "HANDOVER" ? "인계 대기" : "운송 중"}</strong>
           </div>
         ) : (
           <div className={styles.missionConditionProgress}>
-            <span>탐색 완료</span><strong>{progressCurrent}/{progressTotal}</strong>
+            <span>탐색 지점</span><strong>{progressCurrent}/{progressTotal}</strong>
           </div>
         )}
         <div className={outsideSelectedCorridor ? styles.missionConditionAlert : ""}>
-          <span aria-hidden="true">◇</span>
-          <strong>{outsideSelectedCorridor ? "지정 항로 이탈" : `항로 이탈 ${corridorViolationCount}회`}</strong>
+          <span aria-hidden="true">⌖</span>
+          <strong>
+            {medical
+              ? `임시 응급진료소 ${Math.round(destinationDistanceMeters)}m`
+              : nearbyTargetLabel
+                ? "구조 신호 감지됨"
+                : `다음 수색 지점 ${Math.round(destinationDistanceMeters)}m`}
+          </strong>
         </div>
-        <div><span aria-hidden="true">⌖</span><strong>{medical ? "목적지" : "복귀 지점"} {Math.round(destinationDistanceMeters)}m</strong></div>
-        <div><span aria-hidden="true">!</span><strong>충돌 {collisionCount}회</strong></div>
+        <div>
+          <span aria-hidden="true">↥</span>
+          <strong>고도 {altitudeMeters.toFixed(1)}m · 배터리 {Math.round(batteryPercent)}%</strong>
+        </div>
+        <div className={outsideSelectedCorridor || payloadIntegrityPercent < 70 ? styles.missionConditionAlert : ""}>
+          <span aria-hidden="true">◇</span>
+          <strong>
+            {outsideSelectedCorridor
+              ? "지정 항로 이탈"
+              : medical
+                ? `화물 ${Math.round(payloadIntegrityPercent)}% · 충돌 ${collisionCount}회`
+                : `항로 이탈 ${corridorViolationCount}회 · 충돌 ${collisionCount}회`}
+          </strong>
+        </div>
       </aside>
 
       {windActive ? (
@@ -219,8 +241,8 @@ export function MissionFlightOverlay({
       {medical && operationPhase === "HANDOVER" ? (
         <div className={styles.handoverPrompt} role="dialog" aria-label="의약품 인계">
           <span>운항 단계 4/4</span>
-          <h3>병원 B 도착</h3>
-          <p>기체가 안전하게 착륙했습니다. 의료진에게 의약품을 인계하고 임무 기록을 완료하세요.</p>
+          <h3>임시 응급진료소 도착</h3>
+          <p>도로가 단절된 지역의 진료 거점에 안전하게 착륙했습니다. 의료진에게 의약품을 인계하고 임무 기록을 완료하세요.</p>
           <div><b>화물 상태 {Math.round(payloadIntegrityPercent)}%</b><b>충돌 {collisionCount}회</b></div>
           <button type="button" onClick={onMissionAction}>의약품 인계 완료</button>
         </div>

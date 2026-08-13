@@ -8,7 +8,7 @@ export const STUDENT_MISSION_CARDS: readonly MissionCardContent[] = [
     id: "medical-delivery",
     number: 1,
     title: "응급 의약품 운송",
-    situation: "병원 A에서 병원 B로 응급 의약품을 전달합니다.",
+    situation: "도로가 끊긴 고립 마을의 임시 진료소로 응급 의약품을 전달합니다.",
     objective: "안전한 비행 통로를 따라 이동한 뒤 병원 착륙장에 정밀 착륙하세요.",
     durationLabel: "약 3분",
     accent: "medical",

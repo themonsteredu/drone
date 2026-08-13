@@ -31,15 +31,15 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
   id: "medical-delivery",
   kind: "medical_delivery",
   title: "응급 의약품 운송",
-  description: "병원 A에서 병원 B까지 응급 의약품을 안전하게 운송합니다.",
+  description: "도로가 끊긴 고립 지역의 임시 응급진료소까지 의약품을 안전하게 운송합니다.",
   briefing: "응급실 요청을 확인하고 경로를 판단한 뒤 의약품을 안전하게 인계하세요.",
-  roleTitle: "도심 항공물류 운항 담당자",
-  dispatchLabel: "병원 B 응급실 · 의약품 긴급 요청",
+  roleTitle: "재난 의료물류 운항 담당자",
+  dispatchLabel: "고립 마을 임시 진료소 · 의약품 긴급 요청",
   plans: [
     {
       id: "medical-safe",
       label: "안전 우회 항로",
-      summary: "건물과 강풍 중심부를 피해 넓게 우회합니다.",
+      summary: "산사태 구간과 강풍 중심부를 피해 하천 외곽으로 우회합니다.",
       badge: "교육 추천",
       distanceLabel: "비행거리 34m",
       durationLabel: "예상 2분 20초",
@@ -71,7 +71,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
       corridorRadius: 3.4,
     },
   ],
-  preflightChecklist: ["기상·강풍 구역 확인", "의약품 보관함 잠금", "병원 B 착륙장 사용 승인"],
+  preflightChecklist: ["기상·강풍 구역 확인", "의약품 보관함 잠금", "임시 진료소 착륙장 확인"],
   payload: {
     label: "응급 의약품 보관함",
     detail: "저온 보관 · 충격 주의",
@@ -81,7 +81,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
   targets: [
     {
       id: "hospital-b",
-      label: "병원 B 착륙장",
+      label: "임시 응급진료소 착륙장",
       position: { x: 8, y: 0, z: 24 },
       activationRadius: 1.4,
       action: "landing",
@@ -106,7 +106,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
   obstacles: [
     {
       id: "medical-building-1",
-      label: "낮은 건물 1",
+      label: "산사태 암반 1",
       volume: {
         shape: "box",
         min: { x: -6, y: 0, z: 6 },
@@ -115,7 +115,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
     },
     {
       id: "medical-building-2",
-      label: "낮은 건물 2",
+      label: "산사태 암반 2",
       volume: {
         shape: "box",
         min: { x: 6, y: 0, z: 10 },
@@ -124,7 +124,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
     },
     {
       id: "medical-building-3",
-      label: "낮은 건물 3",
+      label: "계곡 암반",
       volume: {
         shape: "box",
         min: { x: -1, y: 0, z: 18 },
@@ -132,7 +132,7 @@ export const MEDICAL_DELIVERY_MISSION: MissionDefinition = {
       },
     },
   ],
-  landingZone: createLandingZone("hospital-b-pad", "병원 B 착륙장", 8, 24),
+  landingZone: createLandingZone("hospital-b-pad", "임시 응급진료소 착륙장", 8, 24),
   scoringRules: DEFAULT_SCORING_RULES,
 };
 

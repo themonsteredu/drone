@@ -207,6 +207,11 @@ test("medical scenery keeps both hospitals clear of the operational pads", () =>
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);
   coordinator.applyTeacherAction("start_medical_mission", initial);
+  assert.equal(
+    coordinator.getSnapshot().scene.environment,
+    "medical-delivery-zone",
+  );
+  assert.equal(coordinator.getSnapshot().scene.cargoState, "none");
   prepareSelectedMission(coordinator);
 
   const markers = coordinator.getSnapshot().scene.markers;
@@ -218,14 +223,17 @@ test("medical scenery keeps both hospitals clear of the operational pads", () =>
   assert.equal(startPad?.kind, "start-pad");
   assert.deepEqual(startPad?.position, { x: 0, y: 0, z: 0 });
   assert.equal(hospitalA?.kind, "hospital");
+  assert.deepEqual(hospitalA?.position, { x: 8.8, y: 1.8, z: 1.2 });
   assert.notDeepEqual(hospitalA?.position, startPad?.position);
   assert.equal(hospitalB?.kind, "hospital");
+  assert.deepEqual(hospitalB?.position, { x: 14.6, y: 1.65, z: 25.8 });
   assert.notDeepEqual(hospitalB?.position, landingPad?.position);
   assert.equal(landingPad?.kind, "landing-pad");
   assert.deepEqual(landingPad?.position, { x: 8, y: 0, z: 24 });
+  assert.equal(coordinator.getSnapshot().scene.cargoState, "loaded");
 });
 
-test("disaster search uses rubble and a separate field command center", () => {
+test("disaster search uses a damaged building and a separate field command center", () => {
   const initial = flightState();
   const coordinator = new ExperienceCoordinator(initial);
   coordinator.applyTeacherAction("start_disaster_search", initial);
@@ -238,12 +246,14 @@ test("disaster search uses rubble and a separate field command center", () => {
   );
   assert.equal(
     markers.find((marker) => marker.id === "search-rubble-1")?.kind,
-    "rubble",
+    "damaged-building",
   );
   assert.equal(
     markers.find((marker) => marker.id === "disaster-search-start")?.kind,
     "start-pad",
   );
+  assert.equal(coordinator.getSnapshot().scene.environment, "disaster-zone");
+  assert.equal(coordinator.getSnapshot().scene.cargoState, "none");
 });
 
 test("course gate visuals expose the exact trigger-plane normal", () => {

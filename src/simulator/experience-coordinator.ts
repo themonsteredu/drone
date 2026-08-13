@@ -785,9 +785,9 @@ export class ExperienceCoordinator {
         if (!this.missionRuntime.selectedPlanId) return "운항 경로를 선택하세요.";
         if (!this.missionRuntime.preflightConfirmed) return "의약품과 출발 전 점검을 확인하세요.";
         if (this.missionRuntime.operationPhase === "HANDOVER") {
-          return "병원 B 의료진에게 의약품을 인계하세요.";
+          return "임시 응급진료소 의료진에게 의약품을 인계하세요.";
         }
-        return "선택한 비행 통로를 유지하며 병원 B로 운항하세요.";
+        return "선택한 비행 통로를 유지하며 임시 응급진료소로 운항하세요.";
       }
       if (!this.missionRuntime.selectedPlanId) return "수색 비행 계획을 선택하세요.";
       if (!this.missionRuntime.preflightConfirmed) return "수색 순서와 장비 점검을 확인하세요.";
@@ -914,7 +914,7 @@ export class ExperienceCoordinator {
         kind: "start-pad",
         position: this.mission.startPosition,
         radius: this.mission.kind === "medical_delivery" ? 2.2 : 2.4,
-        label: this.mission.kind === "medical_delivery" ? "병원 A 출발장" : "현장 지휘소 출발장",
+        label: this.mission.kind === "medical_delivery" ? "재난 의료거점 출발장" : "현장 지휘소 출발장",
         active: !this.missionRuntime.preflightConfirmed,
       });
       if (this.mission.kind === "medical_delivery") {
@@ -925,19 +925,19 @@ export class ExperienceCoordinator {
           {
             id: "medical-hospital-a",
             kind: "hospital",
-            position: { x: -8.2, y: 2.5, z: 0.8 },
-            size: { x: 5.8, y: 5, z: 5.4 },
-            radius: 2.6,
-            label: "병원 A",
+            position: { x: 8.8, y: 1.8, z: 1.2 },
+            size: { x: 5.2, y: 3.6, z: 4.4 },
+            radius: 2.2,
+            label: "재난 의료거점",
             variant: "hospital-a",
           },
           {
             id: "medical-hospital-b",
             kind: "hospital",
-            position: { x: 14, y: 3.1, z: 24.8 },
-            size: { x: 6.8, y: 6.2, z: 6.2 },
-            radius: 3,
-            label: "병원 B",
+            position: { x: 14.6, y: 1.65, z: 25.8 },
+            size: { x: 4.8, y: 3.3, z: 4.6 },
+            radius: 2.2,
+            label: "임시 응급진료소",
             variant: "hospital-b",
           },
         );
@@ -945,9 +945,9 @@ export class ExperienceCoordinator {
         markers.push({
           id: "search-command-center",
           kind: "command-center",
-          position: { x: -6.8, y: 1.5, z: -0.5 },
-          size: { x: 4.6, y: 3, z: 3.8 },
-          radius: 2.2,
+          position: { x: -10.2, y: 1.35, z: 2.4 },
+          size: { x: 4, y: 2.7, z: 3.4 },
+          radius: 2,
           label: "현장 지휘소",
           variant: "disaster",
         });
@@ -955,7 +955,10 @@ export class ExperienceCoordinator {
       for (const obstacle of this.mission.obstacles) {
         markers.push({
           id: obstacle.id,
-          kind: this.mission.kind === "disaster_search" ? "rubble" : "building",
+          kind:
+            this.mission.kind === "disaster_search"
+              ? "damaged-building"
+              : "rock-slope",
           position: volumeCenter(obstacle.volume),
           size: volumeSize(obstacle.volume),
           radius: volumeRadius(obstacle.volume),
@@ -1002,6 +1005,20 @@ export class ExperienceCoordinator {
     return {
       markers,
       collisionPulse: this.collisionPulseUntil > this.stageElapsedSeconds,
+      environment:
+        stage === "MISSION" && this.mission?.kind === "medical_delivery"
+          ? "medical-delivery-zone"
+          : stage === "MISSION" && this.mission?.kind === "disaster_search"
+            ? "disaster-zone"
+            : "training",
+      cargoState:
+        stage === "MISSION" &&
+        this.mission?.kind === "medical_delivery" &&
+        this.missionRuntime?.preflightConfirmed
+          ? this.missionRuntime.operationPhase === "HANDOVER"
+            ? "handover"
+            : "loaded"
+          : "none",
     };
   }
 }

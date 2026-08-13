@@ -6,6 +6,8 @@ export type DroneSceneMarkerKind =
   | "building"
   | "hospital"
   | "rubble"
+  | "damaged-building"
+  | "rock-slope"
   | "command-center"
   | "flight-corridor"
   | "search-target"
@@ -32,6 +34,12 @@ export interface DroneSceneMarker {
 export interface DroneScenePresentation {
   markers: readonly DroneSceneMarker[];
   collisionPulse?: boolean;
+  environment?: "training" | "disaster-zone" | "medical-delivery-zone";
+  cargoState?: "none" | "loaded" | "handover";
 }
 
-export const EMPTY_DRONE_SCENE: DroneScenePresentation = { markers: [] };
+export const EMPTY_DRONE_SCENE: DroneScenePresentation = {
+  markers: [],
+  environment: "training",
+  cargoState: "none",
+};

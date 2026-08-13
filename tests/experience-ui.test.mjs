@@ -61,7 +61,7 @@ test("mission UI requires an operational decision before hands-on flight", async
   assert.match(overlay, /MISSION CONTROL · 운항 요청 접수/);
   assert.match(overlay, /어떤 항로로 배송할까요/);
   assert.match(overlay, /의약품 인수하고 운항 시작/);
-  assert.match(overlay, /병원 B 도착/);
+  assert.match(overlay, /임시 응급진료소 도착/);
   assert.match(overlay, /의약품 인계 완료/);
   assert.match(overlay, /수색 계획 승인하고 운항 시작/);
   assert.match(overlay, /촬영·위치 전송/);

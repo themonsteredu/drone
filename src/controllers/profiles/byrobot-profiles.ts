@@ -45,18 +45,17 @@ export const UNVERIFIED_DEFAULT_OPERATIONS: DefaultControllerOperationGestures =
 
 /**
  * Verified 0x71 raw order: LX, LY, RX, RY. The current classroom controller
- * reports right-stick X with the opposite sign to the simulator's semantic
- * `roll + = aircraft-right` contract, so Roll alone is inverted here. Keeping
- * the correction at the product profile boundary means FlightPhysics remains
- * controller-agnostic and future controller profiles can choose their own
- * polarity.
+ * reports both horizontal stick axes with the opposite sign to the simulator's
+ * semantic right-positive Yaw/Roll contract. Keep both corrections at this
+ * product profile boundary so FlightPhysics and the Mode 2 detector consume a
+ * controller-independent ControllerState.
  *
  * Keep this table in step with tests/axis-preset-contract.test.mjs, which
  * checks the four physical stick directions and the Mode 2 start gesture.
  */
 export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
   Object.freeze({
-    id: "byrobot-strict-0x71-mode2-classroom-v3",
+    id: "byrobot-strict-0x71-mode2-classroom-v4",
     label: "BYROBOT 기본 조종 (검증된 0x71 입력)",
     rawAxisOrder: Object.freeze([
       "left-x",
@@ -69,7 +68,9 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
         rawAxisIndex: 0,
         physicalAxis: "left-x",
         control: "yaw",
-        inverted: false,
+        // Hardware verification: left stick right must produce positive
+        // semantic Yaw (clockwise/right rotation).
+        inverted: true,
       }),
       Object.freeze({
         rawAxisIndex: 1,
@@ -103,7 +104,7 @@ export const BYROBOT_STRICT_JOYSTICK_AXIS_PRESET: ControllerAxisPreset =
       status: "verified",
       scope: "protocol-and-hardware",
       summary:
-        "The official joystick structure supplies left/right X/Y in an 8-byte payload; classroom hardware testing confirmed that right-stick X requires a Roll-only sign correction.",
+        "The official joystick structure supplies left/right X/Y in an 8-byte payload; classroom hardware testing confirmed Yaw and Roll horizontal sign corrections.",
       sourceUrls: Object.freeze([OFFICIAL_BYROBOT_JOYSTICK_STRUCT_URL]),
     }),
   });

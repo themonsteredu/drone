@@ -115,7 +115,7 @@ export function resolveMode2GestureConfig(
 /**
  * Mode 2 inward/down start gesture:
  * - left stick about 5 o'clock: throttle down + positive semantic yaw
- * - right stick about 7 o'clock: pitch down + positive semantic roll after
+ * - right stick about 7 o'clock: pitch down + negative semantic roll after
  *   the verified BYROBOT Roll polarity correction
  */
 export function isMode2ArmingGestureActive(
@@ -128,7 +128,7 @@ export function isMode2ArmingGestureActive(
     state.throttle <= -config.armingDownThreshold &&
     state.yaw >= config.armingInwardThreshold &&
     state.pitch <= -config.armingDownThreshold &&
-    state.roll >= config.armingInwardThreshold
+    state.roll <= -config.armingInwardThreshold
   );
 }
 

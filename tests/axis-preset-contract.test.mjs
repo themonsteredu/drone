@@ -90,9 +90,9 @@ test("the default preset keeps the documented semantic stick directions", () => 
   // throttle +1 up, yaw +1 clockwise, pitch +1 forward, roll +1 aircraft-right.
   assert.equal(project(raw({ leftY: 1 })).throttle, 1, "left stick up climbs");
   assert.equal(
-    project(raw({ leftX: 1 })).yaw,
+    project(raw({ leftX: -1 })).yaw,
     1,
-    "left stick right yaws clockwise, so semantic yaw must be positive",
+    "the classroom controller's physical left-stick right yaws clockwise",
   );
   assert.equal(
     project(raw({ rightY: 1 })).pitch,
@@ -114,11 +114,12 @@ test("the default preset keeps the documented semantic stick directions", () => 
 test("the documented Mode 2 corner reaches the arming gesture through the preset", () => {
   // Left stick about 5 o'clock and right stick about 7 o'clock, per README.
   const corner = project(
-    raw({ leftX: 1, leftY: -1, rightX: -1, rightY: -1 }),
+    raw({ leftX: -1, leftY: -1, rightX: 1, rightY: -1 }),
   );
 
   assert.equal(corner.mappingStatus, "mapped");
-  assert.equal(corner.roll, 1, "physical right-stick left is positive Roll");
+  assert.equal(corner.yaw, 1, "physical left-stick right is positive Yaw");
+  assert.equal(corner.roll, -1, "physical right-stick left is negative Roll");
   assert.equal(
     gestures.isMode2ArmingGestureActive(corner),
     true,
@@ -126,11 +127,11 @@ test("the documented Mode 2 corner reaches the arming gesture through the preset
   );
 });
 
-test("only the hardware-verified Roll axis carries a sign inversion", () => {
+test("the hardware-verified horizontal axes carry sign inversions", () => {
   assert.deepEqual(
     PRESET.bindings.map((binding) => [binding.control, binding.inverted]),
     [
-      ["yaw", false],
+      ["yaw", true],
       ["throttle", false],
       ["roll", true],
       ["pitch", false],
@@ -138,7 +139,9 @@ test("only the hardware-verified Roll axis carries a sign inversion", () => {
   );
 });
 
-test("the profile preserves yaw while correcting Roll independently", () => {
-  assert.equal(project(raw({ leftX: 1 })).yaw, 1);
+test("the profile corrects Yaw and Roll without changing vertical axes", () => {
+  assert.equal(project(raw({ leftX: -1 })).yaw, 1);
   assert.equal(project(raw({ rightX: 1 })).roll, -1);
+  assert.equal(project(raw({ leftY: 1 })).throttle, 1);
+  assert.equal(project(raw({ rightY: 1 })).pitch, 1);
 });

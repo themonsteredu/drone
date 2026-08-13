@@ -97,7 +97,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-1",
       label: "첫 번째 링",
       order: 1,
-      center: { x: 0, y: 2.7, z: 5 },
+      center: { x: 0, y: 5.6, z: 8 },
       normal: { x: 0, y: 0, z: 1 },
       innerRadius: 1.6,
       outerRadius: 1.9,
@@ -107,7 +107,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-2",
       label: "두 번째 링",
       order: 2,
-      center: { x: 2.2, y: 2.5, z: 10 },
+      center: { x: 2.8, y: 5, z: 17 },
       normal: { x: 0, y: 0, z: 1 },
       innerRadius: 1.3,
       outerRadius: 1.6,
@@ -117,7 +117,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-3",
       label: "방향 전환 링",
       order: 3,
-      center: { x: 5, y: 2.35, z: 14 },
+      center: { x: 7, y: 4.6, z: 26 },
       normal: { x: 1, y: 0, z: 0 },
       innerRadius: 1.15,
       outerRadius: 1.45,
@@ -133,8 +133,8 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       label: "왼쪽 안전 표지",
       volume: {
         shape: "box",
-        min: { x: -5.4, y: 0, z: 7.2 },
-        max: { x: -4.85, y: 6.5, z: 7.75 },
+        min: { x: -5.4, y: 0, z: 12.4 },
+        max: { x: -4.85, y: 9.5, z: 12.95 },
       },
     },
     {
@@ -142,12 +142,12 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       label: "오른쪽 안전 표지",
       volume: {
         shape: "box",
-        min: { x: 7.4, y: 0, z: 7.2 },
-        max: { x: 7.95, y: 6.5, z: 7.75 },
+        min: { x: 10.6, y: 0, z: 12.4 },
+        max: { x: 11.15, y: 9.5, z: 12.95 },
       },
     },
   ],
-  landingZone: createLandingZone("training-landing", "훈련 착륙장", 8, 14),
+  landingZone: createLandingZone("training-landing", "훈련 착륙장", 11, 26),
 };
 
 export const CERTIFICATION_COURSE: CourseDefinition = {
@@ -161,5 +161,5 @@ export const CERTIFICATION_COURSE: CourseDefinition = {
     innerRadius: Math.max(0.95, gate.innerRadius - 0.15),
     outerRadius: Math.max(1.25, gate.outerRadius - 0.15),
   })),
-  landingZone: createLandingZone("exam-landing", "시험 착륙장", 8, 14),
+  landingZone: createLandingZone("exam-landing", "시험 착륙장", 11, 26),
 };

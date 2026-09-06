@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { photographicSurface, addNaturalMountains, addNaturalTrees, naturalRockGeometry } from "./flight-scene-resources";
 import type { DroneScenePresentation } from "../simulator/scene-presentation";
 
 type EnvironmentKind = NonNullable<DroneScenePresentation["environment"]>;
@@ -58,7 +59,7 @@ function addGround(
 ): void {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(width, depth),
-    material(color, 1, 0),
+    photographicSurface(color === 0xa8aa9d ? "stone" : "grass", color === 0xa8aa9d ? 0xb7b5ab : 0xd2d2bf),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, GROUND_Y, z);
@@ -72,7 +73,7 @@ function addRoad(
   width: number,
   length: number,
   rotationY = 0,
-  color = 0x4c565d,
+  color = 0xa8acac,
 ): void {
   const road = new THREE.Group();
   road.position.set(x, 0, z);
@@ -80,13 +81,13 @@ function addRoad(
 
   const surface = new THREE.Mesh(
     new THREE.PlaneGeometry(width, length),
-    material(color, 0.96, 0.01),
+    photographicSurface("asphalt", color),
   );
   surface.rotation.x = -Math.PI / 2;
   surface.position.y = -0.02;
   road.add(surface);
 
-  const sidewalkMaterial = material(0xb7b8b3, 0.98, 0);
+  const sidewalkMaterial = photographicSurface("stone", 0xb4b6b3);
   for (const side of [-1, 1]) {
     const sidewalk = new THREE.Mesh(
       new THREE.BoxGeometry(1.15, 0.14, length),
@@ -146,7 +147,7 @@ function addDoorAndWindows(
   const windows = new THREE.Group();
   const rows = Math.max(1, Math.min(3, Math.floor(options.height / 1.7)));
   const columns = Math.max(2, Math.min(5, Math.floor(options.width / 1.25)));
-  const windowMaterial = basicMaterial(0x8dc1d5);
+  const windowMaterial = new THREE.MeshPhysicalMaterial({ color: 0x4c6977, roughness: 0.14, metalness: 0.55, clearcoat: 1 });
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) {
       const removedForDamage =
@@ -174,7 +175,7 @@ function addBuilding(
   options: BuildingOptions,
 ): void {
   const centerY = options.height / 2 + 0.02;
-  const bodyMaterial = material(options.color, 0.86, 0.02);
+  const bodyMaterial = photographicSurface("stone", options.color);
 
   if (options.damaged) {
     const leftWidth = options.width * 0.62;
@@ -279,7 +280,7 @@ function addRubblePile(
   z: number,
   scale = 1,
 ): void {
-  const rubbleMaterial = material(0x717a7d, 0.98, 0);
+  const rubbleMaterial = photographicSurface("stone", 0xaaaead);
   const shapes = [
     [-0.65, 0.16, 0.12, 0.66, 0.34, 0.48],
     [0.05, 0.2, -0.18, 0.8, 0.42, 0.55],
@@ -466,63 +467,12 @@ function addCargoBoxes(group: THREE.Group, x: number, z: number): void {
   }
 }
 
-function addTrees(
-  group: THREE.Group,
-  positions: readonly (readonly [number, number, number])[],
-  shadows: boolean,
-): void {
-  const trunkGeometry = new THREE.CylinderGeometry(0.13, 0.2, 1.25, 7);
-  const crownGeometry = new THREE.DodecahedronGeometry(0.86, 0);
-  const trunks = new THREE.InstancedMesh(
-    trunkGeometry,
-    material(0x6e523d, 1, 0),
-    positions.length,
-  );
-  const crowns = new THREE.InstancedMesh(
-    crownGeometry,
-    material(0x426f4f, 0.98, 0),
-    positions.length,
-  );
-  const matrix = new THREE.Matrix4();
-  const rotation = new THREE.Quaternion();
-  positions.forEach(([x, z, scale], index) => {
-    matrix.compose(
-      new THREE.Vector3(x, 0.6 * scale, z),
-      rotation,
-      new THREE.Vector3(scale, scale, scale),
-    );
-    trunks.setMatrixAt(index, matrix);
-    matrix.compose(
-      new THREE.Vector3(x, 1.72 * scale, z),
-      rotation,
-      new THREE.Vector3(scale, scale * 1.15, scale),
-    );
-    crowns.setMatrixAt(index, matrix);
-  });
-  trunks.castShadow = shadows;
-  crowns.castShadow = shadows;
-  group.add(trunks, crowns);
+function addTrees(group: THREE.Group, positions: ReadonlyArray<readonly [number, number, number?]>, shadows: boolean): void {
+  addNaturalTrees(group, positions.map(([x, z]) => [x, z] as const), shadows);
 }
 
 function addMountains(group: THREE.Group): void {
-  const mountainMaterial = material(0x829276, 1, 0);
-  const rearMaterial = material(0xa4ad91, 1, 0);
-  const mountains = [
-    [-34, 69, 17, 8, 10, mountainMaterial],
-    [-14, 76, 22, 10, 12, rearMaterial],
-    [10, 75, 19, 8, 11, mountainMaterial],
-    [34, 70, 23, 10, 13, rearMaterial],
-  ] as const;
-  for (const [x, z, width, height, depth, mountainColor] of mountains) {
-    const mountain = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(1, 0),
-      mountainColor,
-    );
-    mountain.scale.set(width, height, depth);
-    mountain.position.set(x, height * 0.58 - 0.08, z);
-    mountain.rotation.set(0.04, x * 0.018, -0.025);
-    group.add(mountain);
-  }
+  addNaturalMountains(group);
 }
 
 function addRoadDamage(group: THREE.Group, x: number, z: number): void {
@@ -556,8 +506,8 @@ function buildDisasterZone(options: EnvironmentBuildOptions): THREE.Group {
   const group = new THREE.Group();
   group.name = "disaster-zone";
   addGround(group, 0xa8aa9d, 95, 105, 22);
-  addRoad(group, 0, 19, 9.5, 72, 0, 0x4c555a);
-  addRoad(group, 0, 13, 8.5, 58, Math.PI / 2, 0x515a5e);
+  addRoad(group, 0, 19, 9.5, 72, 0, 0x9da4a6);
+  addRoad(group, 0, 13, 8.5, 58, Math.PI / 2, 0xa5aaaa);
   addCrosswalk(group, 0, 8.5);
   addCrosswalk(group, -5.2, 13, Math.PI / 2);
 
@@ -599,9 +549,9 @@ function addRiver(group: THREE.Group): void {
   const river = new THREE.Mesh(
     new THREE.PlaneGeometry(72, 6.8),
     new THREE.MeshStandardMaterial({
-      color: 0x66abc3,
-      roughness: 0.35,
-      metalness: 0.03,
+      color: 0x3d6567,
+      roughness: 0.18,
+      metalness: 0.35,
       transparent: true,
       opacity: 0.88,
     }),
@@ -611,7 +561,7 @@ function addRiver(group: THREE.Group): void {
   river.position.set(0, -0.012, 12.2);
   group.add(river);
 
-  const bankMaterial = material(0xb6a47b, 1, 0);
+  const bankMaterial = photographicSurface("stone", 0xa89c84);
   for (const offset of [-4.2, 4.2]) {
     const bank = new THREE.Mesh(
       new THREE.PlaneGeometry(74, 1.8),
@@ -625,7 +575,7 @@ function addRiver(group: THREE.Group): void {
 }
 
 function addBrokenBridge(group: THREE.Group): void {
-  const bridgeMaterial = material(0x747d7d, 0.94, 0.02);
+  const bridgeMaterial = photographicSurface("stone", 0xaaaead);
   for (const side of [-1, 1]) {
     const deck = new THREE.Mesh(
       new THREE.BoxGeometry(5.4, 0.35, 2.3),
@@ -650,7 +600,7 @@ function addBrokenBridge(group: THREE.Group): void {
 }
 
 function addLandslide(group: THREE.Group): void {
-  const soilMaterial = material(0x9b7650, 1, 0);
+  const soilMaterial = photographicSurface("stone", 0x9b8c77);
   const rocks = [
     [3.2, 16.2, 1.8, 0.8],
     [1.4, 17.1, 1.45, 0.6],
@@ -659,7 +609,7 @@ function addLandslide(group: THREE.Group): void {
   ] as const;
   for (const [x, z, radius, y] of rocks) {
     const rock = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(radius, 0),
+      naturalRockGeometry(radius, 2),
       soilMaterial,
     );
     rock.scale.y = 0.58;

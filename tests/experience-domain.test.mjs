@@ -48,6 +48,9 @@ function loadPureTypeScriptModule(url) {
 const experience = loadPureTypeScriptModule(
   new URL("../src/experience/index.ts", import.meta.url),
 );
+const { createMissionActivityRecord, renderMissionActivityRecord } = loadPureTypeScriptModule(
+  new URL("../src/experience/activity-record.ts", import.meta.url),
+);
 
 const {
   BASIC_TRAINING_COURSE,
@@ -75,6 +78,7 @@ const {
   isPointInsideGateTrigger,
   reduceExperienceProgress,
   selectMissionPlan,
+  updateMissionPreflight,
   scoreToStars,
   segmentIntersectsObstacle,
   stepBattery,
@@ -83,7 +87,11 @@ const {
 
 function createPreparedMissionState(mission) {
   const initial = createMissionRuntimeState(mission);
-  const selected = selectMissionPlan(mission, initial, mission.plans[0].id);
+  let selected = selectMissionPlan(mission, initial, mission.plans[0].id);
+  selected = updateMissionPreflight(mission, selected, { planReason: "강풍을 피해 안전하게 운항하려고" });
+  for (const item of mission.preflightChecklist) {
+    selected = updateMissionPreflight(mission, selected, { item, checked: true });
+  }
   return confirmMissionPreflight(mission, selected);
 }
 
@@ -96,11 +104,91 @@ function stepMissionAt(mission, state, position, options = {}) {
     throttleMagnitude: options.throttleMagnitude ?? 0.2,
     missionActionPressed: options.missionActionPressed ?? false,
     landed: options.landed ?? false,
+    grounded: options.grounded ?? options.landed ?? false,
+    motorsStopped: options.motorsStopped ?? options.grounded ?? options.landed ?? false,
     emergencyActivated: options.emergencyActivated ?? false,
     collisionEnabled: options.collisionEnabled,
     stabilitySample: options.stabilitySample ?? 0.9,
   });
 }
+
+test("dispatch requires every real check and a reason, and changing plans invalidates them", () => {
+  const mission = MEDICAL_DELIVERY_MISSION;
+  let state = selectMissionPlan(mission, createMissionRuntimeState(mission), mission.plans[0].id);
+  assert.equal(confirmMissionPreflight(mission, state).preflightConfirmed, false);
+  state = updateMissionPreflight(mission, state, { planReason: "   " });
+  for (const item of mission.preflightChecklist) state = updateMissionPreflight(mission, state, { item, checked: true });
+  assert.equal(confirmMissionPreflight(mission, state).preflightConfirmed, false);
+  state = updateMissionPreflight(mission, state, { planReason: "  강풍을 피하려고  " });
+  const unchecked = updateMissionPreflight(mission, state, { item: mission.preflightChecklist[0], checked: false });
+  assert.equal(confirmMissionPreflight(mission, unchecked).preflightConfirmed, false);
+  const changed = selectMissionPlan(mission, state, mission.plans[1].id);
+  assert.deepEqual(changed.checkedPreflightItems, []);
+  assert.equal(changed.planReason, "");
+  assert.equal(confirmMissionPreflight(mission, changed).preflightConfirmed, false);
+  const confirmed = confirmMissionPreflight(mission, state);
+  assert.equal(confirmed.preflightConfirmed, true);
+  assert.equal(confirmed.planReason, "강풍을 피하려고");
+  assert.equal(selectMissionPlan(mission, confirmed, mission.plans[1].id), confirmed);
+  assert.equal(updateMissionPreflight(mission, confirmed, { planReason: "사후 변경" }), confirmed);
+  assert.equal(confirmMissionPreflight(DISASTER_SEARCH_MISSION, state), state);
+});
+
+test("handover requires current stopped ground contact and rejects the exact deadline", () => {
+  const mission = MEDICAL_DELIVERY_MISSION;
+  const pad = { ...mission.landingZone.center };
+  const ready = stepMissionAt(mission, createPreparedMissionState(mission), pad, { landed: true }).state;
+  assert.equal(ready.operationPhase, "HANDOVER");
+  const spinningDown = stepMissionAt(mission, ready, pad, { grounded: true, motorsStopped: false, missionActionPressed: true });
+  assert.equal(spinningDown.state.operationPhase, "HANDOVER");
+  assert.equal(spinningDown.state.status, "ACTIVE");
+  for (const [position, grounded] of [[{ ...pad, y: 5 }, false], [{ ...pad, x: pad.x + 10 }, true], [pad, false]]) {
+    const invalid = stepMissionAt(mission, ready, position, { grounded, missionActionPressed: true });
+    assert.equal(invalid.state.status, "ACTIVE");
+    assert.equal(invalid.state.operationPhase, "FLIGHT");
+    assert.equal(invalid.state.handoverCompleted, false);
+    assert.equal(invalid.events.some((event) => event.type === "missionCompleted"), false);
+    const returnedWithoutLanding = stepMissionAt(mission, invalid.state, pad, { grounded: true, missionActionPressed: true });
+    assert.equal(returnedWithoutLanding.state.handoverCompleted, false);
+    const relanded = stepMissionAt(mission, invalid.state, pad, { landed: true });
+    assert.equal(stepMissionAt(mission, relanded.state, pad, { grounded: true, missionActionPressed: true }).state.status, "COMPLETED");
+  }
+  for (const delta of [0.5, 0.6]) {
+    const expired = stepMissionAt(mission, { ...ready, elapsedSeconds: mission.timeLimitSeconds - 0.5 }, pad, { elapsedSeconds: delta, grounded: true, missionActionPressed: true });
+    assert.equal(expired.state.status, "EXPIRED");
+    assert.equal(expired.state.handoverCompleted, false);
+    assert.equal(expired.events.some((event) => event.type === "missionCompleted"), false);
+  }
+  const done = stepMissionAt(mission, ready, pad, { grounded: true, missionActionPressed: true, landed: true });
+  assert.equal(done.state.operationPhase, "COMPLETED");
+  assert.equal(done.events.filter((event) => event.type === "missionCompleted").length, 1);
+  const again = stepMissionAt(mission, done.state, pad, { missionActionPressed: true, grounded: true });
+  assert.deepEqual(again.events, []);
+});
+
+test("activity exports preserve decisions and failed outcomes without executing student text", () => {
+  const mission = MEDICAL_DELIVERY_MISSION;
+  const state = { ...createPreparedMissionState(mission), status: "EXPIRED", elapsedSeconds: 180, collisionCount: 2 };
+  const student = { participant: '<img src=x onerror="alert(1)">', reflection: "다음엔 <script>alert(1)</script> & 속도 줄이기", practice: true };
+  const stamp = { id: "test-record", recordedAt: "2026-09-06T03:00:00.000Z" };
+  const record = createMissionActivityRecord(mission, state, student, stamp);
+  assert.equal(record.result.completed, false);
+  assert.equal(record.outcome.status, "EXPIRED");
+  assert.equal(record.plan.reason, state.planReason);
+  assert.ok(record.preflight.every((item) => item.checked));
+  state.collisionCount = 9;
+  assert.equal(record.outcome.collisionCount, 2);
+  const html = renderMissionActivityRecord(record);
+  assert.match(html, /제한 시간 종료/);
+  assert.match(html, /교사 점검 모드/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /&lt;img/);
+  assert.doesNotMatch(html, /<script|<img|<iframe|https?:\/\//i);
+  assert.match(html, /default-src 'none'/);
+  assert.throws(() => createMissionActivityRecord(mission, createPreparedMissionState(mission), student, stamp));
+  assert.throws(() => createMissionActivityRecord(mission, state, { ...student, participant: " " }, stamp));
+  assert.throws(() => createMissionActivityRecord(DISASTER_SEARCH_MISSION, state, student, stamp));
+});
 
 test("tutorial is an ordered six-step Mode 2 flight activity, not a checklist", () => {
   assert.equal(MODE2_TUTORIAL_STEPS.length, 6);
@@ -477,7 +565,7 @@ test("medical delivery requires route planning, cargo handover and a successful 
     MEDICAL_DELIVERY_MISSION,
     delivered.state,
     { x: 8.1, y: 0, z: 24 },
-    { missionActionPressed: true },
+    { missionActionPressed: true, grounded: true },
   );
   assert.equal(handedOver.state.status, "COMPLETED");
   assert.equal(handedOver.state.handoverCompleted, true);

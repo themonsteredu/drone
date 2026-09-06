@@ -50,7 +50,7 @@ test("caps balanced rendering instead of using a full high-DPI workload", () => 
 });
 
 test("the real-time 3D view is dynamically loaded without post-processing", async () => {
-  const [loader, visual] = await Promise.all([
+  const [loader, visual, resources, model] = await Promise.all([
     readFile(
       new URL("../src/components/drone-visual-loader.tsx", import.meta.url),
       "utf8",
@@ -59,15 +59,17 @@ test("the real-time 3D view is dynamically loaded without post-processing", asyn
       new URL("../src/components/drone-three-visual.tsx", import.meta.url),
       "utf8",
     ),
+    readFile(new URL("../src/components/flight-scene-resources.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/industrial-drone-model.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(loader, /dynamic\(/);
   assert.match(loader, /ssr: false/);
   assert.match(visual, /powerPreference: "low-power"/);
-  assert.match(visual, /InstancedMesh/);
-  assert.match(visual, /position\.z > 0/);
-  assert.match(visual, /FRONT_ROTOR_COLOR = 0xff783f/);
-  assert.match(visual, /REAR_ROTOR_COLOR = 0x3478f6/);
+  assert.match(resources, /InstancedMesh/);
+  assert.match(model, /z > 0 \? frontMark : metal/);
+  assert.match(model, /frontMark = new THREE.MeshStandardMaterial/);
+  assert.match(resources, /textures\.values\(\).*texture\.dispose\(\)/);
   assert.match(visual, /LANDING_PAD_VISUAL_SCALE = 1\.18/);
   assert.match(visual, /DRONE_MODEL_LOWEST_Y = -0\.605/);
   assert.match(visual, /LANDING_PAD_SURFACE_Y - DRONE_MODEL_LOWEST_Y/);
@@ -76,5 +78,5 @@ test("the real-time 3D view is dynamically loaded without post-processing", asyn
   assert.match(visual, /grounded \? 0 : transform\.tilt\.pitch/);
   assert.match(visual, /grounded \? 0 : -transform\.tilt\.roll/);
   assert.match(visual, /new THREE\.RingGeometry/);
-  assert.doesNotMatch(visual, /EffectComposer|UnrealBloomPass|textureLoader/i);
+  assert.doesNotMatch(visual + resources, /EffectComposer|UnrealBloomPass/);
 });

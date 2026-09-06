@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import styles from "./experience-ui.module.css";
 import type { ExperienceScoreItem } from "./experience-types";
 
@@ -53,6 +53,7 @@ export interface ExperienceResultScreenProps {
   onRetry?: () => void;
   continueLabel?: string;
   retryLabel?: string;
+  children?: ReactNode;
 }
 
 export function ExperienceResultScreen({
@@ -69,6 +70,7 @@ export function ExperienceResultScreen({
   onRetry,
   continueLabel,
   retryLabel = "다시 도전",
+  children,
 }: ExperienceResultScreenProps) {
   const titleId = useId();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -128,6 +130,8 @@ export function ExperienceResultScreen({
         <strong>{profileType}</strong>
         <p>{careerMessage}</p>
       </div>
+
+      {children}
 
       {onContinue || onRetry ? (
         <div className={styles.resultActions}>

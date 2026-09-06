@@ -49,6 +49,7 @@ const { BASIC_TRAINING_COURSE } = loadTypeScriptModule(
   new URL("../src/experience/training.ts", import.meta.url),
 );
 const PAD = BASIC_TRAINING_COURSE.landingZone.center;
+const flightModel = loadTypeScriptModule(new URL("../src/simulator/flight-model.ts", import.meta.url));
 
 function flightState({
   phase = "READY",
@@ -76,8 +77,45 @@ function prepareSelectedMission(coordinator) {
   const mission = coordinator.getSnapshot().mission;
   assert.ok(mission);
   coordinator.chooseMissionPlan(mission.plans[0].id);
+  coordinator.updatePreflight({ planReason: "기상과 배터리를 확인했어요" });
+  for (const item of mission.preflightChecklist) {
+    coordinator.updatePreflight({ item, checked: true });
+  }
   coordinator.confirmMissionDispatch();
 }
+
+test("real physics landings wait for rotor spin-down and disconnected actions are discarded", () => {
+  const initial = flightModel.createInitialFlightState();
+  const coordinator = new ExperienceCoordinator(initial);
+  coordinator.applyTeacherAction("start_medical_mission", initial);
+  prepareSelectedMission(coordinator);
+  let flight = { ...initial, phase: "LANDING", mode: "landing", position: { x: 8, y: 1.5, z: 24 }, rotorSpeed: 1 };
+  coordinator.synchronizeFlightState(flight);
+  const neutral = { throttle: 0, yaw: 0, pitch: 0, roll: 0, active: true };
+  for (let frame = 0; frame < 600 && flight.phase !== "READY"; frame += 1) {
+    flight = flightModel.stepFlightState(flight, neutral, 1 / 60);
+    coordinator.step(flight, true, 1 / 60, "normal");
+  }
+  assert.equal(flight.phase, "READY");
+  assert.ok(flight.rotorSpeed > 0.01);
+  assert.equal(coordinator.getSnapshot().missionRuntime.operationPhase, "HANDOVER");
+  coordinator.queueMissionAction();
+  coordinator.step(flight, true, 1 / 60, "normal");
+  assert.equal(coordinator.getSnapshot().progress.stage, "MISSION");
+  for (let frame = 0; frame < 90; frame += 1) {
+    flight = flightModel.stepFlightState(flight, neutral, 1 / 60);
+    coordinator.step(flight, true, 1 / 60, "normal");
+  }
+  assert.ok(flight.rotorSpeed <= 0.01);
+  coordinator.queueMissionAction();
+  coordinator.step(flight, false, 1 / 60, "normal");
+  coordinator.step(flight, true, 1 / 60, "normal");
+  assert.equal(coordinator.getSnapshot().progress.stage, "MISSION");
+  coordinator.queueMissionAction();
+  coordinator.step(flight, true, 1 / 60, "normal");
+  assert.equal(coordinator.getSnapshot().progress.stage, "RESULT");
+  assert.equal(coordinator.getSnapshot().result.completed, true);
+});
 
 test("coordinates the full hands-on tutorial into the training stage", () => {
   const initial = flightState();

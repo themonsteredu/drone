@@ -1,10 +1,12 @@
 import type { FlightState } from "./flight-model";
+import type { TouchdownSignal } from "./flight-feedback";
 
 export interface DroneTransform {
   position: { x: number; y: number; z: number };
   rotation: { yaw: number };
   tilt: { pitch: number; roll: number };
   rotorSpeed: number;
+  touchdown?: TouchdownSignal;
 }
 
 /** Stable render boundary: a future GLB/GLTF model only needs this transform. */

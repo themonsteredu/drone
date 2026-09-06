@@ -791,6 +791,8 @@ Yaw 방향과 시동은 같은 Left X 보정을 공유합니다. 또한 오른�
 
 ## 19. 공식 참고 자료
 
+항공모빌리티 활동의 온라인 제출 규격과 운영 반영 순서는 [진로기록 제출 안내](docs/career-log.md)를 참고하세요.
+
 - [Coding Drone Protocol Intro](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/01_intro/)
 - [Coding Drone DataType](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/03_datatype/)
 - [Coding Drone Protocol Structs](https://dev.byrobot.co.kr/documents/kr/products/coding_drone/protocol/05_structs/)

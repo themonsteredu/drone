@@ -305,6 +305,7 @@ export function combineWindForces(
 export type MissionRuntimeStatus = "ACTIVE" | "RETURNING" | "COMPLETED" | "EXPIRED";
 
 export interface MissionRuntimeState {
+  attemptId: string;
   missionId: string;
   status: MissionRuntimeStatus;
   operationPhase: MissionOperationPhase;
@@ -360,6 +361,7 @@ export function createMissionRuntimeState(
 ): MissionRuntimeState {
   return {
     missionId: mission.id,
+    attemptId: crypto.randomUUID(),
     status: "ACTIVE",
     operationPhase: "BRIEFING",
     preflightConfirmed: false,
@@ -627,6 +629,7 @@ export function stepMission(
 
   const stabilitySample = clamp(input.stabilitySample ?? 1, 0, 1);
   const state: MissionRuntimeState = {
+    attemptId: previous.attemptId,
     missionId: previous.missionId,
     status,
     operationPhase,

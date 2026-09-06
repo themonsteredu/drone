@@ -1747,6 +1747,12 @@
 .activityRecordActions button + button { background: #fff; color: #20598d; }
 .activityRecordActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 .activityRecordActions span { color: #586e84; font-size: 0.8125rem; }
+.activityRecordActions span { overflow-wrap: anywhere; }
+.careerRecovery { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 12px 24px; background: #e8f2ef; border-bottom: 1px solid #bad1cb; color: #20594f; font-size: 13px; line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }
+.careerRecovery p { margin: 0; }
+.careerRecovery button { flex-shrink: 0; min-height: 40px; padding: 8px 16px; border: 1px solid #286f61; border-radius: 5px; background: #fff; color: #20594f; font: inherit; cursor: pointer; }
+.careerRecovery button:disabled { opacity: 0.5; cursor: wait; }
+.careerRecovery button:focus-visible { outline: 3px solid #286f61; outline-offset: 3px; }
 .activityRecordForm :is(input, textarea, button):focus-visible { outline: 3px solid #2467b6; outline-offset: 3px; }
 .activityRecordForm .activityRecordMessage { margin-top: 10px; color: #245b89; }
 @media (max-width: 640px) { .activityRecordFields { grid-template-columns: 1fr; } .activityRecordForm { padding: 16px 12px; } .activityRecordActions span { flex-basis: 100%; } }

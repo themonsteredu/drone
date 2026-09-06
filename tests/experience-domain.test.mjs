@@ -262,6 +262,37 @@ test("gate pass accepts either plane direction through the clear opening", () =>
   );
 });
 
+test("raised courses leave a drone-width route clear through every gate and mission leg", () => {
+  const course = BASIC_TRAINING_COURSE;
+  assert.ok(course.gates[1].center.y - course.gates[0].center.y >= 3);
+  assert.ok(course.gates[1].center.y - course.gates[2].center.y >= 3);
+  const trainingPath = [course.startPosition, ...course.gates.map(gate => gate.center), course.landingZone.center];
+  const courses = [{ id: course.id, points: trainingPath, obstacles: course.obstacles }];
+  for (const mission of MISSION_DEFINITIONS) {
+    for (const plan of mission.plans) {
+      courses.push({ id: plan.id, points: [mission.startPosition, ...plan.waypoints, mission.landingZone.center], obstacles: mission.obstacles });
+      for (const target of mission.targets.filter(target => target.action === "mission_action")) {
+        assert.ok(plan.waypoints.some(point => Math.hypot(point.x - target.position.x, point.y - target.position.y, point.z - target.position.z) < target.activationRadius));
+      }
+    }
+  }
+  for (const { id, points, obstacles } of courses) {
+    for (let index = 1; index < points.length; index += 1) {
+      for (const obstacle of obstacles) {
+        assert.equal(segmentIntersectsObstacle(points[index - 1], points[index], obstacle, 0.45), false, `${id} leg ${index} intersects ${obstacle.id}`);
+      }
+    }
+  }
+});
+
+test("medical route choices retain a wind-free detour and an exposed direct route at flight height", () => {
+  const zone = MEDICAL_DELIVERY_MISSION.windZones[0];
+  const crossesWind = plan => plan.waypoints.slice(1).some((point, index) =>
+    segmentIntersectsObstacle(plan.waypoints[index], point, { id: zone.id, label: zone.label, volume: zone.volume }, 0));
+  assert.equal(crossesWind(MEDICAL_DELIVERY_MISSION.plans[0]), false);
+  assert.equal(crossesWind(MEDICAL_DELIVERY_MISSION.plans[1]), true);
+});
+
 test("ordered tracker ignores a later gate until the expected gate is passed", () => {
   const tracker = new CourseTracker(BASIC_TRAINING_COURSE);
   const second = BASIC_TRAINING_COURSE.gates[1];

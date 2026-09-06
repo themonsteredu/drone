@@ -50,8 +50,12 @@ test("medical guidance respects the selected corridor and advances beyond a reac
   const fast = getMissionGuidance(medical, runtimeFor(medical, "medical-fast"), origin);
   assert.equal(first.destinationLabel, "항로 경유점 1");
   assert.notEqual(first.relativeBearingDegrees, fast.relativeBearingDegrees);
-  assert.ok(Math.abs(first.distanceMeters - Math.hypot(4.8, 7)) < 0.001);
-  const reached = getMissionGuidance(medical, safe, flightAt({ x: 4.8, y: 2.4, z: 7 }));
+  const waypoint = medical.plans[0].waypoints[1];
+  assert.ok(Math.abs(first.distanceMeters - Math.hypot(waypoint.x, waypoint.z)) < 0.001);
+  const below = getMissionGuidance(medical, safe, flightAt({ ...waypoint, y: 1 }));
+  assert.equal(below.destinationLabel, "항로 경유점 1", "being below a waypoint is not reaching its height");
+  assert.match(below.action, /상승/);
+  const reached = getMissionGuidance(medical, safe, flightAt({ ...waypoint }));
   assert.equal(reached.destinationLabel, "항로 경유점 2");
   assert.ok(reached.routePercent > first.routePercent);
 });
@@ -77,9 +81,29 @@ test("search uses actual proximity, gives altitude guidance when too high, and r
   assert.equal(targetTwo.destinationLabel, "탐색 지점 2");
   assert.match(targetTwo.action, /촬영·위치 전송/);
   const returning = getMissionGuidance(search, { ...runtime, foundTargetIds: search.targets.map(target => target.id), status: "RETURNING", operationPhase: "RETURNING" }, flightAt({ x: -1, y: 2, z: 20 }));
-  assert.equal(returning.destinationLabel, search.landingZone.label);
+  assert.match(returning.destinationLabel, /복귀 경유점/);
   assert.equal(returning.phaseLabel, "지휘소 복귀");
   assert.match(returning.action, /복귀/);
+  assert.match(returning.action, /상승/);
+});
+
+test("search guidance follows transit waypoints before each signal and the elevated return leg", () => {
+  for (const plan of search.plans) {
+    let runtime = runtimeFor(search, plan.id);
+    for (const [index, target] of search.targets.entries()) {
+      const start = index === 0 ? search.startPosition : search.targets[index - 1].position;
+      const transit = getMissionGuidance(search, runtime, flightAt(start));
+      assert.match(transit.destinationLabel, /항로 경유점/);
+      assert.match(transit.action, /상승/);
+      const arrival = getMissionGuidance(search, runtime, flightAt(target.position));
+      assert.equal(arrival.destinationLabel, target.label);
+      assert.match(arrival.action, /촬영·위치 전송/);
+      runtime = { ...runtime, foundTargetIds: [...runtime.foundTargetIds, target.id] };
+    }
+    const home = getMissionGuidance(search, runtime, flightAt({ ...search.landingZone.center, y: 3 }));
+    assert.equal(home.destinationLabel, search.landingZone.label);
+    assert.equal(home.phaseLabel, "정밀 착륙");
+  }
 });
 
 test("actual assisted and manual landings emit one touchdown; resets and ground holds do not", () => {

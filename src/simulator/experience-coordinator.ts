@@ -785,7 +785,7 @@ export class ExperienceCoordinator {
     }
     if (this.progress.stage === "TRAINING") {
       return this.courseSnapshot.nextGateIndex < BASIC_TRAINING_COURSE.gates.length
-        ? `${this.courseSnapshot.nextGateIndex + 1}번째 링을 순서대로 통과하세요.`
+        ? `${this.courseSnapshot.nextGateIndex + 1}번째 링 · 고도 ${BASIC_TRAINING_COURSE.gates[this.courseSnapshot.nextGateIndex].center.y}m로 맞춰 통과하세요.`
         : "착륙 패드 중앙에 천천히 착륙하세요.";
     }
     if (this.progress.stage === "CERTIFICATION") {
@@ -793,7 +793,9 @@ export class ExperienceCoordinator {
         ? "시험 결과를 확인하세요."
         : !this.certificationClockStarted
           ? `Mode 2 시동을 걸면 ${CERTIFICATION_TIME_LIMIT_SECONDS}초 시험이 시작됩니다.`
-          : "링 3개 통과, 오른쪽 Yaw, 고도 변경과 정밀 착륙을 완료하세요.";
+          : this.courseSnapshot.nextGateIndex < CERTIFICATION_COURSE.gates.length
+            ? `${this.courseSnapshot.nextGateIndex + 1}번째 링 · 고도 ${CERTIFICATION_COURSE.gates[this.courseSnapshot.nextGateIndex].center.y}m · 오른쪽 Yaw도 수행하세요.`
+            : "착륙 패드 중앙에 천천히 착륙하세요.";
     }
     if (this.progress.stage === "MISSION" && this.mission && this.missionRuntime) {
       if (this.mission.kind === "medical_delivery") {
@@ -886,7 +888,7 @@ export class ExperienceCoordinator {
           position: gate.center,
           normal: gate.normal,
           radius: gate.outerRadius,
-          label: `Gate ${gate.order}`,
+          label: `${gate.order}번 링 · ${gate.center.y}m`,
           active: index === this.courseSnapshot.nextGateIndex,
           completed: index < this.courseSnapshot.nextGateIndex,
         });

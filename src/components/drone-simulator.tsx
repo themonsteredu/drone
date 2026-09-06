@@ -73,6 +73,7 @@ import {
 import { ExperienceFeedback } from "./experience/experience-feedback";
 import { MissionFlightOverlay } from "./experience/mission-flight-overlay";
 import { ExperienceResultScreen } from "./experience/qualification-result";
+import { MissionActivityRecordForm } from "./mission-activity-record";
 import {
   TeacherTestControls,
   type TeacherTestAction,
@@ -884,6 +885,11 @@ export function DroneSimulator({
     refreshExperience();
   }, [experienceCoordinator, refreshExperience]);
 
+  const updatePreflight = useCallback((update: { item?: string; checked?: boolean; planReason?: string }) => {
+    experienceCoordinator.updatePreflight(update);
+    refreshExperience();
+  }, [experienceCoordinator, refreshExperience]);
+
   const startCapture = (action: MappableButtonAction) => {
     if (
       preferences.controlMode !== "custom" &&
@@ -1235,7 +1241,11 @@ export function DroneSimulator({
               ? () => selectMission(experience.mission?.id ?? "")
               : undefined
           }
-        />
+        >
+          {experience.mission && experience.missionRuntime ? (
+            <MissionActivityRecordForm mission={experience.mission} runtime={experience.missionRuntime} practice={teacherPreviewActive} />
+          ) : null}
+        </ExperienceResultScreen>
       ) : null}
 
       {showFlightArea ? (
@@ -1277,6 +1287,9 @@ export function DroneSimulator({
                 guidance={missionGuidance}
                 plans={experience.mission.plans}
                 checklist={experience.mission.preflightChecklist}
+                checkedPreflightItems={experience.missionRuntime?.checkedPreflightItems ?? []}
+                planReason={experience.missionRuntime?.planReason ?? ""}
+                onUpdatePreflight={updatePreflight}
                 payload={experience.mission.payload}
                 operationPhase={experience.missionRuntime?.operationPhase ?? "BRIEFING"}
                 selectedPlanId={experience.missionRuntime?.selectedPlanId}
@@ -1292,6 +1305,7 @@ export function DroneSimulator({
                 outsideSelectedCorridor={experience.missionRuntime?.outsideSelectedCorridor ?? false}
                 nearbyTargetLabel={nearbyMissionTarget?.label}
                 missionActionReady={controlsEnabled}
+                handoverReady={telemetry.phase === "READY" && telemetry.rotorSpeed <= 0.01}
                 onSelectPlan={chooseMissionPlan}
                 onConfirmDispatch={confirmMissionDispatch}
                 onMissionAction={triggerMissionAction}

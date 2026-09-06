@@ -1724,6 +1724,33 @@
 }
 .preflightBox button:disabled { cursor: not-allowed; opacity: 0.45; }
 
+.planReason { display: grid; gap: 7px; margin-top: 16px; color: #29435f; font-size: 0.875rem; }
+.planReason input { width: 100%; min-width: 0; min-height: 42px; border: 1px solid #bfcee0; border-radius: 8px; background: #fff; color: #142f4d; padding: 9px 12px; font: inherit; }
+.planReason input:focus-visible, .interactivePreflight input:focus-visible { outline: 3px solid #216cf3; outline-offset: 3px; }
+.interactivePreflight { align-items: stretch; flex-direction: column; }
+.interactivePreflight fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.interactivePreflight legend { color: #2c609e; font-size: 0.875rem; font-weight: 700; margin-bottom: 6px; }
+.interactivePreflight label { display: flex; align-items: flex-start; gap: 9px; min-height: 36px; padding: 7px 0; color: #29435f; font-size: 0.875rem; line-height: 1.6; cursor: pointer; }
+.interactivePreflight input { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; accent-color: #216cf3; }
+.interactivePreflight button { justify-content: center; white-space: normal; font-size: 0.875rem; }
+.preflightHint { margin: 8px 0 0; color: #5b6b80; font-size: 0.8125rem; line-height: 1.7; word-break: keep-all; }
+
+.activityRecordForm { background: #f4f8fc; border-top: 2px solid #3478b9; margin-top: 24px; padding: 20px; color: #1e3d5c; }
+.activityRecordForm h3 { font-size: 1rem; margin: 0 0 5px; }
+.activityRecordForm p { font-size: 0.875rem; line-height: 1.7; margin: 0; word-break: keep-all; }
+.activityRecordFields { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr); gap: 16px; margin: 16px 0; }
+.activityRecordFields label { display: grid; align-content: start; gap: 7px; font-size: 0.875rem; min-width: 0; }
+.activityRecordFields input, .activityRecordFields textarea { width: 100%; min-width: 0; min-height: 42px; padding: 10px; border: 1px solid #b8cadd; border-radius: 8px; background: #fff; color: #163451; font: inherit; line-height: 1.7; }
+.activityRecordFields textarea { resize: vertical; }
+.activityRecordActions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.activityRecordActions button { border: 1px solid #2467b6; border-radius: 8px; background: #2467b6; color: #fff; font: inherit; font-size: 0.875rem; padding: 10px 15px; min-height: 44px; cursor: pointer; }
+.activityRecordActions button + button { background: #fff; color: #20598d; }
+.activityRecordActions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.activityRecordActions span { color: #586e84; font-size: 0.8125rem; }
+.activityRecordForm :is(input, textarea, button):focus-visible { outline: 3px solid #2467b6; outline-offset: 3px; }
+.activityRecordForm .activityRecordMessage { margin-top: 10px; color: #245b89; }
+@media (max-width: 640px) { .activityRecordFields { grid-template-columns: 1fr; } .activityRecordForm { padding: 16px 12px; } .activityRecordActions span { flex-basis: 100%; } }
+
 .missionConditionStack .missionConditionAlert {
   background: rgba(255, 240, 226, 0.96);
   border-color: #f1b66f;

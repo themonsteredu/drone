@@ -310,6 +310,8 @@ export interface MissionRuntimeState {
   operationPhase: MissionOperationPhase;
   selectedPlanId?: string;
   preflightConfirmed: boolean;
+  checkedPreflightItems: readonly string[];
+  planReason: string;
   payloadIntegrityPercent: number;
   handoverCompleted: boolean;
   corridorViolationCount: number;
@@ -336,6 +338,10 @@ export interface MissionStepInput {
   throttleMagnitude: number;
   missionActionPressed?: boolean;
   landed?: boolean;
+  /** Current disarmed ground contact, separate from the one-frame landing event. */
+  grounded?: boolean;
+  /** The visual rotor spin-down has also finished. */
+  motorsStopped?: boolean;
   emergencyActivated?: boolean;
   /** Grounded READY/ARMING states observe the scene but cannot collide. */
   collisionEnabled?: boolean;
@@ -357,6 +363,8 @@ export function createMissionRuntimeState(
     status: "ACTIVE",
     operationPhase: "BRIEFING",
     preflightConfirmed: false,
+    checkedPreflightItems: [],
+    planReason: "",
     payloadIntegrityPercent: 100,
     handoverCompleted: false,
     corridorViolationCount: 0,
@@ -380,11 +388,34 @@ export function selectMissionPlan(
   previous: MissionRuntimeState,
   planId: string,
 ): MissionRuntimeState {
-  if (!mission.plans.some((plan) => plan.id === planId)) return previous;
+  if (previous.missionId !== mission.id || previous.preflightConfirmed ||
+      previous.status !== "ACTIVE" || previous.selectedPlanId === planId ||
+      !mission.plans.some((plan) => plan.id === planId)) return previous;
   return {
     ...previous,
     selectedPlanId: planId,
     operationPhase: "PREFLIGHT",
+    checkedPreflightItems: [],
+    planReason: "",
+  };
+}
+
+export function updateMissionPreflight(
+  mission: MissionDefinition,
+  previous: MissionRuntimeState,
+  update: { item?: string; checked?: boolean; planReason?: string },
+): MissionRuntimeState {
+  if (previous.missionId !== mission.id || previous.preflightConfirmed ||
+      previous.status !== "ACTIVE" || !previous.selectedPlanId) return previous;
+  const checked = new Set(previous.checkedPreflightItems);
+  if (update.item && mission.preflightChecklist.includes(update.item)) {
+    if (update.checked) checked.add(update.item);
+    else checked.delete(update.item);
+  }
+  return {
+    ...previous,
+    checkedPreflightItems: [...checked],
+    planReason: update.planReason === undefined ? previous.planReason : update.planReason.slice(0, 240),
   };
 }
 
@@ -392,10 +423,15 @@ export function confirmMissionPreflight(
   mission: MissionDefinition,
   previous: MissionRuntimeState,
 ): MissionRuntimeState {
-  if (!previous.selectedPlanId || previous.missionId !== mission.id) return previous;
+  if (previous.missionId !== mission.id || previous.preflightConfirmed ||
+      previous.status !== "ACTIVE" ||
+      !mission.plans.some((plan) => plan.id === previous.selectedPlanId) ||
+      !previous.planReason.trim() ||
+      !mission.preflightChecklist.every((item) => previous.checkedPreflightItems.includes(item))) return previous;
   return {
     ...previous,
     preflightConfirmed: true,
+    planReason: previous.planReason.trim(),
     operationPhase: "FLIGHT",
   };
 }
@@ -470,6 +506,13 @@ export function stepMission(
   let payloadIntegrityPercent = previous.payloadIntegrityPercent;
   let handoverCompleted = previous.handoverCompleted;
   let corridorViolationCount = previous.corridorViolationCount;
+  const currentLanding = assessLanding(input.position, mission.landingZone);
+  const safelyGrounded = input.grounded === true && currentLanding.success;
+  // A prior landing is not proof that the aircraft is still ready for handover.
+  if (operationPhase === "HANDOVER" && !safelyGrounded) {
+    operationPhase = "FLIGHT";
+    landingAssessment = undefined;
+  }
   const outsideSelectedCorridor = !isInsideSelectedCorridor(mission, previous, input.position);
   if (outsideSelectedCorridor && !previous.outsideSelectedCorridor) {
     corridorViolationCount += 1;
@@ -509,12 +552,12 @@ export function stepMission(
     }
   }
 
-  if (input.missionActionPressed) {
+  if (input.missionActionPressed && elapsedSeconds < mission.timeLimitSeconds) {
     events.push({ type: "missionActionPressed", atSeconds: elapsedSeconds });
     if (
       mission.kind === "medical_delivery" &&
       operationPhase === "HANDOVER" &&
-      landingAssessment?.success
+      safelyGrounded && input.motorsStopped === true && landingAssessment?.success
     ) {
       handoverCompleted = true;
       operationPhase = "COMPLETED";
@@ -551,10 +594,10 @@ export function stepMission(
     operationPhase = "RETURNING";
   }
 
-  if (input.landed) {
+  if (input.landed && status !== "COMPLETED") {
     landingAssessment = assessLanding(input.position, mission.landingZone);
     events.push({ type: "landed", atSeconds: elapsedSeconds, assessment: landingAssessment });
-    const medicalReadyForHandover = mission.kind === "medical_delivery" && landingAssessment.success;
+    const medicalReadyForHandover = mission.kind === "medical_delivery" && safelyGrounded;
     const searchComplete =
       mission.kind === "disaster_search" && actionTargetsComplete && landingAssessment.success;
     if (medicalReadyForHandover && elapsedSeconds < mission.timeLimitSeconds) {
@@ -589,6 +632,8 @@ export function stepMission(
     operationPhase,
     selectedPlanId: previous.selectedPlanId,
     preflightConfirmed: previous.preflightConfirmed,
+    checkedPreflightItems: previous.checkedPreflightItems,
+    planReason: previous.planReason,
     payloadIntegrityPercent,
     handoverCompleted,
     corridorViolationCount,

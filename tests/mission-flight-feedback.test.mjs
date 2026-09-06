@@ -23,12 +23,17 @@ function load(path) {
 }
 
 const { getMissionGuidance, destinationBearing } = load("../src/experience/mission-guidance.ts");
-const { MEDICAL_DELIVERY_MISSION: medical, DISASTER_SEARCH_MISSION: search, createMissionRuntimeState, selectMissionPlan, confirmMissionPreflight } = load("../src/experience/missions.ts");
+const { MEDICAL_DELIVERY_MISSION: medical, DISASTER_SEARCH_MISSION: search, createMissionRuntimeState, selectMissionPlan, confirmMissionPreflight, updateMissionPreflight } = load("../src/experience/missions.ts");
 const model = load("../src/simulator/flight-model.ts");
 const { FlightFeedbackTracker, touchdownSettlingOffset } = load("../src/simulator/flight-feedback.ts");
 const { flightAudioLevels } = load("../src/simulator/flight-audio.ts");
 const flightAt = (position, changes = {}) => ({ ...model.createInitialFlightState(), phase: "FLIGHT", mode: "flying", position, rotorSpeed: 1, ...changes });
-const runtimeFor = (mission, plan = mission.plans[0].id) => confirmMissionPreflight(mission, selectMissionPlan(mission, createMissionRuntimeState(mission), plan));
+const runtimeFor = (mission, plan = mission.plans[0].id) => {
+  let runtime = selectMissionPlan(mission, createMissionRuntimeState(mission), plan);
+  runtime = updateMissionPreflight(mission, runtime, { planReason: "안전한 경로를 선택했어요" });
+  for (const item of mission.preflightChecklist) runtime = updateMissionPreflight(mission, runtime, { item, checked: true });
+  return confirmMissionPreflight(mission, runtime);
+};
 
 test("bearings follow the aircraft nose across heading wrap and distinguish height from horizontal distance", () => {
   const position = { x: 0, y: 8, z: 0 };

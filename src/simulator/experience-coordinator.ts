@@ -18,6 +18,7 @@ import {
   getMissionDefinition,
   reduceExperienceProgress,
   selectMissionPlan,
+  updateMissionPreflight,
   stepMission,
   stepTutorial,
   type CertificationAttemptMetrics,
@@ -240,6 +241,7 @@ export class ExperienceCoordinator {
     this.certificationFinished = false;
     this.mission = mission;
     this.missionRuntime = createMissionRuntimeState(mission);
+    this.missionActionQueued = false;
     this.result = null;
     this.resetStageClock();
     this.previousFlight = flight;
@@ -255,12 +257,19 @@ export class ExperienceCoordinator {
   }
 
   queueMissionAction(): void {
-    this.missionActionQueued = true;
+    if (this.progress.stage === "MISSION" && this.missionRuntime?.preflightConfirmed) {
+      this.missionActionQueued = true;
+    }
   }
 
   chooseMissionPlan(planId: string): void {
     if (!this.mission || !this.missionRuntime) return;
     this.missionRuntime = selectMissionPlan(this.mission, this.missionRuntime, planId);
+  }
+
+  updatePreflight(update: { item?: string; checked?: boolean; planReason?: string }): void {
+    if (!this.mission || !this.missionRuntime) return;
+    this.missionRuntime = updateMissionPreflight(this.mission, this.missionRuntime, update);
   }
 
   confirmMissionDispatch(): void {
@@ -324,6 +333,7 @@ export class ExperienceCoordinator {
     if (changesStage) {
       this.feedback = [];
       this.stageElapsedSeconds = 0;
+      this.missionActionQueued = false;
     }
     this.previousFlight = flight;
     if (shortcut === "reset_training") {
@@ -388,6 +398,7 @@ export class ExperienceCoordinator {
     let collisionOccurred = false;
 
     if (!runtimeReady) {
+      this.missionActionQueued = false;
       this.synchronizeFlightState(flight);
       const requestFlightReset = this.requestFlightReset;
       this.requestFlightReset = false;
@@ -503,6 +514,9 @@ export class ExperienceCoordinator {
         throttleMagnitude: Math.abs(flight.smoothedInput.throttle),
         missionActionPressed: this.missionActionQueued,
         landed: landedNow,
+        grounded: flight.phase === "READY" && flight.position.y <= 0.02 &&
+          velocityMagnitude(flight) <= 0.05,
+        motorsStopped: flight.rotorSpeed <= 0.01,
         emergencyActivated:
           this.previousFlight.phase !== "EMERGENCY" &&
           flight.phase === "EMERGENCY",
@@ -558,6 +572,7 @@ export class ExperienceCoordinator {
             ...this.missionRuntime,
             previousPosition: { ...this.missionRuntime.previousPosition },
             foundTargetIds: [...this.missionRuntime.foundTargetIds],
+            checkedPreflightItems: [...this.missionRuntime.checkedPreflightItems],
             activeWindZoneIds: [...this.missionRuntime.activeWindZoneIds],
             activeObstacleIds: [...this.missionRuntime.activeObstacleIds],
             collisionCooldownUntil: {

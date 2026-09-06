@@ -3138,6 +3138,20 @@
 }
 
 /* Flight-deck redesign: short guidance, one telemetry strip, clear sight lines. */
+.missionBrief .guidanceWarning { color: #9b4c24; }
+.guidanceDetail { display: block; margin-top: 4px; color: #597075; font-size: 12px; line-height: 1.55; word-break: keep-all; }
+.missionDestination { display: flex; gap: 10px; align-items: center; margin-top: 10px; padding-top: 9px; border-top: 1px solid #b8c9c958; color: #226960; }
+.missionDestination > svg { flex: 0 0 32px; }
+.missionDestination > div { flex: 1; min-width: 0; }
+.missionDestination strong { display: block; color: #27434a; font-size: 13px; font-weight: 600; line-height: 1.5; word-break: keep-all; }
+.missionDestination small { display: block; color: #6a8083; font-size: 11px; line-height: 1.5; }
+.missionDestination > span { text-align: right; white-space: nowrap; }
+.missionDestination b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.missionInlineAction { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px; pointer-events: auto; }
+.missionInlineAction button { min-height: 40px; padding: 8px 14px; background: #246f67; color: #fff; border: 1px solid #1d605a; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer; }
+.missionInlineAction button:disabled { opacity: 0.55; cursor: default; }
+.missionInlineAction button:focus-visible { outline: 3px solid #d19140; outline-offset: 3px; }
+.missionInlineAction small { font-size: 11px; color: #617a7c; line-height: 1.5; word-break: keep-all; }
 .statusHud {
   background: #f9fbfc;
   color: #263e49;

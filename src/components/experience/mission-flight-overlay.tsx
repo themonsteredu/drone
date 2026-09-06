@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./experience-ui.module.css";
+import type { MissionGuidance } from "../../experience/mission-guidance";
 
 interface MissionPlanView {
   id: string;
@@ -20,6 +21,7 @@ export interface MissionFlightOverlayProps {
   roleTitle: string;
   dispatchLabel: string;
   objective: string;
+  guidance?: MissionGuidance;
   plans: readonly MissionPlanView[];
   checklist: readonly string[];
   payload?: { label: string; detail: string; handlingNote: string };
@@ -29,9 +31,6 @@ export interface MissionFlightOverlayProps {
   progressTotal: number;
   routePercent?: number;
   collisionCount: number;
-  destinationDistanceMeters: number;
-  altitudeMeters: number;
-  batteryPercent: number;
   windActive: boolean;
   payloadIntegrityPercent: number;
   corridorViolationCount: number;
@@ -49,6 +48,7 @@ export function MissionFlightOverlay({
   roleTitle,
   dispatchLabel,
   objective,
+  guidance,
   plans,
   checklist,
   payload,
@@ -58,7 +58,6 @@ export function MissionFlightOverlay({
   progressTotal,
   routePercent,
   collisionCount,
-  destinationDistanceMeters,
   windActive,
   payloadIntegrityPercent,
   corridorViolationCount,
@@ -181,15 +180,42 @@ export function MissionFlightOverlay({
         aria-label={`${title} 현재 목표`}
       >
         <p>{title}<span>{selectedPlan?.label}</span></p>
-        <h3>{objective}</h3>
+        <h3 aria-live="polite" aria-atomic="true" className={guidance?.tone === "warning" ? styles.guidanceWarning : undefined}>{guidance?.action ?? objective}</h3>
+        {guidance ? (
+          <>
+            <small className={styles.guidanceDetail}>{guidance.detail}</small>
+            <div className={styles.missionDestination} role="group" aria-label="다음 지점">
+              <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+                <circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" opacity="0.25" />
+                <path d="m16 6 7 17-7-4-7 4Z" fill="currentColor" transform={`rotate(${guidance.relativeBearingDegrees} 16 16)`} />
+              </svg>
+              <div>
+                <strong>{guidance.destinationLabel}</strong>
+                <small>{guidance.directionLabel} · {guidance.phaseLabel}</small>
+              </div>
+              <span><b>{guidance.distanceMeters < 10 ? guidance.distanceMeters.toFixed(1) : Math.round(guidance.distanceMeters)}m</b><small>수평거리</small></span>
+            </div>
+          </>
+        ) : null}
         <div className={styles.missionBriefProgress}>
           <span>
             {medical
-              ? `운송 경로 ${Math.round(progress)}%`
+              ? `항로 진행 ${Math.round(progress)}%`
               : `탐색 완료 ${progressCurrent}/${progressTotal}`}
           </span>
           <progress value={progress} max={100} />
         </div>
+        {medical && operationPhase === "HANDOVER" ? (
+          <div className={styles.missionInlineAction}>
+            <button type="button" onClick={onMissionAction}>의약품 인계 완료</button>
+            <small>임시 응급진료소 도착 · 화물 상태 {Math.round(payloadIntegrityPercent)}%</small>
+          </div>
+        ) : !medical && nearbyTargetLabel ? (
+          <div className={styles.missionInlineAction}>
+            <button type="button" onClick={onMissionAction} disabled={!missionActionReady}>촬영·위치 전송</button>
+            <small>{missionActionReady ? "화면에서 바로 누르거나 조종기 버튼을 선택 설정할 수 있습니다." : "조종기 연결과 입력 확인 후 촬영할 수 있습니다."}</small>
+          </div>
+        ) : null}
       </section>
 
       <aside className={styles.missionConditionStack} aria-label="임무 상태">
@@ -203,16 +229,6 @@ export function MissionFlightOverlay({
             <span>탐색 지점</span><strong>{progressCurrent}/{progressTotal}</strong>
           </div>
         )}
-        <div className={outsideSelectedCorridor ? styles.missionConditionAlert : ""}>
-          <span aria-hidden="true">⌖</span>
-          <strong>
-            {medical
-              ? `임시 응급진료소 ${Math.round(destinationDistanceMeters)}m`
-              : nearbyTargetLabel
-                ? "구조 신호 감지됨"
-                : `다음 수색 지점 ${Math.round(destinationDistanceMeters)}m`}
-          </strong>
-        </div>
         <div className={outsideSelectedCorridor || payloadIntegrityPercent < 70 ? styles.missionConditionAlert : ""}>
           <span aria-hidden="true">◇</span>
           <strong>
@@ -229,26 +245,6 @@ export function MissionFlightOverlay({
         <div className={styles.windNotice} role="status">
           <span aria-hidden="true">≋</span>
           <div><strong>강풍 구역 진입</strong><small>항로와 화물 상태를 유지하며 반대 방향으로 보정하세요.</small></div>
-        </div>
-      ) : null}
-
-      {medical && operationPhase === "HANDOVER" ? (
-        <div className={styles.handoverPrompt} role="dialog" aria-label="의약품 인계">
-          <span>운항 단계 4/4</span>
-          <h3>임시 응급진료소 도착</h3>
-          <p>도로가 단절된 지역의 진료 거점에 안전하게 착륙했습니다. 의료진에게 의약품을 인계하고 임무 기록을 완료하세요.</p>
-          <div><b>화물 상태 {Math.round(payloadIntegrityPercent)}%</b><b>충돌 {collisionCount}회</b></div>
-          <button type="button" onClick={onMissionAction}>의약품 인계 완료</button>
-        </div>
-      ) : null}
-
-      {!medical && nearbyTargetLabel ? (
-        <div className={styles.searchActionPrompt} role="status">
-          <div><strong>구조 신호 포착</strong><small>{nearbyTargetLabel} · 위치를 촬영하고 지휘소에 전송하세요.</small></div>
-          <button type="button" onClick={onMissionAction} disabled={!missionActionReady}>
-            <span aria-hidden="true">▣</span> 촬영·위치 전송
-          </button>
-          <small>화면에서 바로 누르거나 조종기 버튼을 선택 설정할 수 있습니다.</small>
         </div>
       ) : null}
     </div>

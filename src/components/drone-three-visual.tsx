@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { createIndustrialDrone } from "./industrial-drone-model";
 import { photographicSurface, createSceneResources, createDaylightEnvironment, addNaturalMountains, addNaturalTrees, naturalRockGeometry } from "./flight-scene-resources";
 import type { DroneTransform } from "../simulator/drone-transform";
+import { touchdownSettlingOffset } from "../simulator/flight-feedback";
 import {
   EMPTY_DRONE_SCENE,
   type DroneSceneMarker,
@@ -950,6 +951,9 @@ export function DroneThreeVisual({
     const cargoLoadedOffset = new THREE.Vector3(0, -0.22, -0.52);
     let cargoState: NonNullable<DroneScenePresentation["cargoState"]> = "none";
     let cargoTransitionStartedAt = 0;
+    let touchdownSequence = readTransformRef.current().touchdown?.sequence ?? 0;
+    let touchdownStartedAt = -Infinity;
+    let touchdownStrength = 0;
 
     const resize = () => {
       const rect = container.getBoundingClientRect();
@@ -1007,6 +1011,14 @@ export function DroneThreeVisual({
         camera.updateProjectionMatrix();
       }
       const grounded = transform.position.y <= 0.02;
+      if (transform.touchdown && transform.touchdown.sequence !== touchdownSequence) {
+        touchdownSequence = transform.touchdown.sequence;
+        touchdownStartedAt = time;
+        touchdownStrength = transform.touchdown.strength;
+      }
+      const settling = grounded && !reducedMotion
+        ? touchdownSettlingOffset((time - touchdownStartedAt) / 1000, touchdownStrength)
+        : 0;
       const signature = markerSignature(presentation);
       if (signature !== markerState) {
         markerState = signature;
@@ -1018,7 +1030,7 @@ export function DroneThreeVisual({
         transform.position.x,
         Math.max(
           DRONE_GROUND_CLEARANCE,
-          transform.position.y + DRONE_GROUND_CLEARANCE,
+          transform.position.y + DRONE_GROUND_CLEARANCE + settling,
         ),
         transform.position.z,
       );

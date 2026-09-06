@@ -54,6 +54,9 @@ const ARMING_HOLD_SECONDS = Math.round(
   DEFAULT_MODE2_GESTURE_CONFIG.armingHoldMs / 1000,
 );
 import { DroneVisual } from "./drone-visual-loader";
+import { FlightSoundControl } from "./flight-sound-control";
+import { FlightFeedbackTracker } from "../simulator/flight-feedback";
+import { getMissionGuidance } from "../experience/mission-guidance";
 import { FlightSettingsPanel } from "./flight-settings-panel";
 import type { SimulatorPreferencesUpdater } from "./use-simulator-preferences";
 import { StudentStatusHud } from "./experience/student-status-hud";
@@ -362,6 +365,7 @@ export function DroneSimulator({
   onRequestConnection,
 }: DroneSimulatorProps) {
   const [flightController] = useState(() => new FlightController(preferences));
+  const [flightFeedback] = useState(() => new FlightFeedbackTracker());
   const [experienceCoordinator] = useState(
     () => new ExperienceCoordinator(flightController.getState()),
   );
@@ -508,12 +512,13 @@ export function DroneSimulator({
     (command: FlightCommand) => {
       const next = flightController.dispatch(command);
       if (command === "reset") {
+        flightFeedback.reset();
         experienceCoordinator.synchronizeFlightState(next);
       }
       setTelemetry(cloneFlightState(next));
       return next;
     },
-    [experienceCoordinator, flightController],
+    [experienceCoordinator, flightController, flightFeedback],
   );
 
   useEffect(() => {
@@ -710,6 +715,7 @@ export function DroneSimulator({
       const elapsed = Math.max(0, (time - previousTime) / 1000);
       previousTime = time;
       if (experienceCoordinator.consumeFlightResetRequest()) {
+        flightFeedback.reset();
         const reset = flightController.dispatch("reset");
         experienceCoordinator.synchronizeFlightState(reset);
       }
@@ -746,9 +752,11 @@ export function DroneSimulator({
         next = flightController.applyCollisionResponse();
       }
       if (experienceStep.requestFlightReset) {
+        flightFeedback.reset();
         next = flightController.dispatch("reset");
         experienceCoordinator.synchronizeFlightState(next);
       }
+      flightFeedback.update(next);
       if (time - lastTelemetryAt >= 100) {
         lastTelemetryAt = time;
         setTelemetry(next);
@@ -768,13 +776,17 @@ export function DroneSimulator({
     controlsEnabled,
     experienceCoordinator,
     flightController,
+    flightFeedback,
     mappingSourceId,
     preferences.speedLevel,
   ]);
 
   const readTransform = useCallback(
-    () => createDroneTransform(flightController.getState()),
-    [flightController],
+    () => ({
+      ...createDroneTransform(flightController.getState()),
+      touchdown: flightFeedback.getSignal(),
+    }),
+    [flightController, flightFeedback],
   );
   const readScene = useCallback(
     () => experienceCoordinator.getSnapshot().scene,
@@ -991,38 +1003,9 @@ export function DroneSimulator({
             ) <= target.activationRadius,
         )
       : undefined;
-  const missionLandingCenter = experience.mission?.landingZone.center;
-  const nextSearchTarget =
-    experience.mission?.kind === "disaster_search"
-      ? experience.mission.targets.find(
-          (target) =>
-            target.action === "mission_action" &&
-            !missionFoundTargetIds.has(target.id),
-        )
-      : undefined;
-  const missionGuidancePoint = nextSearchTarget?.position ?? missionLandingCenter;
-  const missionDestinationDistance = missionGuidancePoint
-    ? Math.hypot(
-        telemetry.position.x - missionGuidancePoint.x,
-        telemetry.position.y - missionGuidancePoint.y,
-        telemetry.position.z - missionGuidancePoint.z,
-      )
-    : 0;
-  const missionInitialDistance =
-    experience.mission && missionLandingCenter
-      ? Math.max(
-          0.001,
-          Math.hypot(
-            experience.mission.startPosition.x - missionLandingCenter.x,
-            experience.mission.startPosition.y - missionLandingCenter.y,
-            experience.mission.startPosition.z - missionLandingCenter.z,
-          ),
-        )
-      : 1;
-  const missionRoutePercent = Math.max(
-    0,
-    Math.min(100, (1 - missionDestinationDistance / missionInitialDistance) * 100),
-  );
+  const missionGuidance = experience.mission && experience.missionRuntime
+    ? getMissionGuidance(experience.mission, experience.missionRuntime, telemetry)
+    : undefined;
   const missionActionNeedsMapping =
     domainStage === "MISSION" &&
     experience.mission?.kind === "disaster_search" &&
@@ -1257,6 +1240,14 @@ export function DroneSimulator({
 
       {showFlightArea ? (
         <>
+          <FlightSoundControl
+            flight={telemetry}
+            windStrength={experience.missionRuntime?.activeWindZoneIds.length ? 1 : 0}
+            active={["TUTORIAL", "TRAINING", "CERTIFICATION", "MISSION"].includes(domainStage) &&
+              (domainStage !== "CERTIFICATION" || !experience.certificationFinished) &&
+              (domainStage !== "MISSION" || Boolean(experience.missionRuntime?.preflightConfirmed))}
+            touchdown={flightFeedback.getSignal()}
+          />
           <div className="drone-stage">
             <DroneVisual readTransform={readTransform} readScene={readScene} />
             {domainStage === "TUTORIAL" && experience.tutorialStep ? (
@@ -1282,9 +1273,8 @@ export function DroneSimulator({
                 title={experience.mission.title}
                 roleTitle={experience.mission.roleTitle}
                 dispatchLabel={experience.mission.dispatchLabel}
-                objective={
-                  experience.currentObjective
-                }
+                objective={currentObjective}
+                guidance={missionGuidance}
                 plans={experience.mission.plans}
                 checklist={experience.mission.preflightChecklist}
                 payload={experience.mission.payload}
@@ -1292,11 +1282,8 @@ export function DroneSimulator({
                 selectedPlanId={experience.missionRuntime?.selectedPlanId}
                 progressCurrent={experience.missionRuntime?.foundTargetIds.length ?? 0}
                 progressTotal={requiredMissionTargets.length}
-                routePercent={missionRoutePercent}
+                routePercent={missionGuidance?.routePercent}
                 collisionCount={missionCollisionCount}
-                destinationDistanceMeters={missionDestinationDistance}
-                altitudeMeters={telemetry.position.y}
-                batteryPercent={missionBattery}
                 windActive={Boolean(
                   experience.missionRuntime?.activeWindZoneIds.length,
                 )}

@@ -179,7 +179,7 @@ function addHillsAndTrees(scene: THREE.Object3D, treeCount: number, shadows: boo
 
 function disposeGroup(group: THREE.Group): void {
   group.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
+    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Line)) return;
     object.geometry.dispose();
     const materials = Array.isArray(object.material)
       ? object.material
@@ -650,6 +650,14 @@ function addFlightCorridor(marker: DroneSceneMarker, group: THREE.Group): void {
   const path = marker.path ?? [];
   const width = Math.max(1.6, Math.min(4.2, (marker.radius ?? 3.2) * 1.15));
   const color = marker.active ? 0x35a7ff : 0x7aa8c9;
+  // The ground ribbon gives lateral orientation; this elevated line shows the
+  // actual climb/descent profile from the same points used by flight guidance.
+  if (path.length > 1) {
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(path.map(point => new THREE.Vector3(point.x, point.y, point.z))),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: marker.active ? 0.8 : 0.45 }),
+    ));
+  }
   const material = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
@@ -674,12 +682,21 @@ function addFlightCorridor(marker: DroneSceneMarker, group: THREE.Group): void {
   }
   for (const waypoint of path.slice(1, -1)) {
     const beacon = new THREE.Mesh(
-      new THREE.RingGeometry(0.28, 0.38, 18),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.74 }),
+      new THREE.RingGeometry(0.4, 0.52, 18),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.74, side: THREE.DoubleSide }),
     );
     beacon.rotation.x = -Math.PI / 2;
-    beacon.position.set(waypoint.x, 0.035, waypoint.z);
+    beacon.position.set(waypoint.x, waypoint.y, waypoint.z);
     group.add(beacon);
+    const stem = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(waypoint.x, 0.035, waypoint.z),
+        new THREE.Vector3(waypoint.x, waypoint.y, waypoint.z),
+      ]),
+      new THREE.LineDashedMaterial({ color, transparent: true, opacity: 0.25, dashSize: 0.24, gapSize: 0.2 }),
+    );
+    stem.computeLineDistances();
+    group.add(stem);
   }
   material.dispose();
 }
@@ -1163,7 +1180,7 @@ export function DroneThreeVisual({
       scene.remove(missionEnvironment);
       disposeGroup(missionEnvironment);
       scene.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
+        if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Line)) return;
         object.geometry.dispose();
         const materials = Array.isArray(object.material)
           ? object.material

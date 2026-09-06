@@ -7,8 +7,8 @@ const cache = new Map();
 function load(path) {
   const url = typeof path === "string" ? new URL(path, import.meta.url) : path;
   if (cache.has(url.href)) return cache.get(url.href).exports;
-  const module = { exports: {} };
-  cache.set(url.href, module);
+  const loadedModule = { exports: {} };
+  cache.set(url.href, loadedModule);
   const source = ts.transpileModule(readFileSync(url, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: url.pathname,
   }).outputText;
@@ -17,8 +17,8 @@ function load(path) {
     const resolved = [new URL(base.href + ".ts"), new URL(base.href + "/index.ts")].find(candidate => existsSync(candidate));
     if (!resolved) throw new Error(`Unexpected dependency: ${specifier}`);
     return load(resolved);
-  }, module, module.exports);
-  return module.exports;
+  }, loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 const career = load("../src/experience/career-log.ts");
 const { createMissionActivityRecord } = load("../src/experience/activity-record.ts");

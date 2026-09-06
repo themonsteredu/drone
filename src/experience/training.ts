@@ -90,7 +90,7 @@ export const MODE2_TUTORIAL_STEPS: readonly TutorialStepDefinition[] = [
 export const BASIC_TRAINING_COURSE: CourseDefinition = {
   id: "basic-flight-training",
   title: "기초 비행 훈련장",
-  description: "큰 링부터 차례로 통과하고 마지막 착륙 패드에 착륙합니다.",
+  description: "5.6m 링에서 9m 링으로 상승하고, 6m 링으로 하강·방향 전환한 뒤 착륙합니다.",
   startPosition: { x: 0, y: 0, z: 0 },
   gates: [
     {
@@ -107,7 +107,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-2",
       label: "두 번째 링",
       order: 2,
-      center: { x: 2.8, y: 5, z: 17 },
+      center: { x: 2.8, y: 9, z: 17 },
       normal: { x: 0, y: 0, z: 1 },
       innerRadius: 1.3,
       outerRadius: 1.6,
@@ -117,7 +117,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       id: "training-gate-3",
       label: "방향 전환 링",
       order: 3,
-      center: { x: 7, y: 4.6, z: 26 },
+      center: { x: 7, y: 6, z: 26 },
       normal: { x: 1, y: 0, z: 0 },
       innerRadius: 1.15,
       outerRadius: 1.45,
@@ -125,8 +125,8 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
     },
   ],
   // The pylons mark the corridor rather than block it. They sit well outside
-  // the gate line so a student steering between rings is never squeezed, and
-  // they stop below the raised gates so the course reads as open from behind.
+  // the gate line so a student steering between rings is never squeezed.
+  // Different mast heights make the climb and descent legible from the runway.
   obstacles: [
     {
       id: "training-pylon-left",
@@ -134,7 +134,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       volume: {
         shape: "box",
         min: { x: -5.4, y: 0, z: 12.4 },
-        max: { x: -4.85, y: 9.5, z: 12.95 },
+        max: { x: -4.85, y: 11.5, z: 12.95 },
       },
     },
     {
@@ -143,7 +143,7 @@ export const BASIC_TRAINING_COURSE: CourseDefinition = {
       volume: {
         shape: "box",
         min: { x: 10.6, y: 0, z: 12.4 },
-        max: { x: 11.15, y: 9.5, z: 12.95 },
+        max: { x: 11.15, y: 13, z: 12.95 },
       },
     },
   ],

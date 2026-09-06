@@ -1,0 +1,93 @@
+/* The live scene is the working surface. Controls remain reachable outside it. */
+.controller-app:not(.controller-app--cover) {
+  background: #e8ecef;
+  max-width: none;
+  padding: 12px;
+}
+
+.controller-app:not(.controller-app--cover) .pilot-layout {
+  max-width: 1920px;
+}
+
+.controller-app:not(.controller-app--cover) .simulator-card.flight-deck {
+  border: 1px solid #c2ccd1;
+  border-radius: 10px;
+  box-shadow: 0 10px 32px #1b2b3712;
+}
+
+.controller-app:not(.controller-app--cover) .flight-deck > header {
+  border-radius: 0;
+  padding: 10px 20px;
+}
+
+.controller-app:not(.controller-app--cover) .flight-deck .drone-stage,
+.controller-app:not(.controller-app--cover) .flight-deck .drone-stage canvas {
+  height: clamp(520px, calc(100svh - 136px), 1100px);
+  min-height: 520px;
+}
+
+.flight-deck .drone-stage { overflow: hidden; }
+.flight-deck .flight-telemetry {
+  left: 22px;
+  bottom: 94px;
+  gap: 12px;
+}
+.flight-deck .flight-telemetry span {
+  background: #17272acc;
+  border: 0;
+  border-radius: 4px;
+  color: #c9d6d9;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+.flight-deck .flight-emergency-overlay {
+  bottom: 22px;
+  right: 22px;
+  min-width: 158px;
+  min-height: 48px;
+  font-size: 14px;
+  border: 1px solid #c36b64;
+  border-radius: 6px;
+  color: #912f2a;
+  background: #fff5f1ed !important;
+  box-shadow: none;
+}
+.flight-deck .flight-feedback-overlay {
+  top: auto;
+  right: 22px;
+  bottom: 120px;
+  max-width: 340px;
+}
+.flight-deck .tutorial-flight-guide {
+  top: 20px;
+  left: 22px;
+  width: min(460px, calc(100% - 44px));
+  max-width: none;
+  border-radius: 6px;
+  padding: 14px 18px;
+  box-shadow: 0 4px 20px #172c3520;
+}
+.flight-deck .tutorial-flight-guide h3 {
+  font-size: 18px;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+.flight-deck .tutorial-flight-guide p { font-size: 14px; line-height: 1.6; }
+.flight-deck .screen-flight-tools { border: 0; border-radius: 0; margin: 0; }
+.flight-deck .screen-flight-tools > summary { min-height: 44px; padding: 10px 20px; }
+.flight-deck .screen-flight-tools > summary span { font-size: 14px; }
+
+@media (max-width: 760px) {
+  .controller-app:not(.controller-app--cover) { padding: 0; }
+  .controller-app:not(.controller-app--cover) .simulator-card.flight-deck { border-radius: 0; border-inline: 0; }
+  .controller-app:not(.controller-app--cover) .flight-deck > header { padding: 10px 12px; }
+  .controller-app:not(.controller-app--cover) .flight-deck .drone-stage,
+  .controller-app:not(.controller-app--cover) .flight-deck .drone-stage canvas {
+    height: max(590px, calc(100svh - 150px));
+    min-height: 590px;
+  }
+  .flight-deck .flight-emergency-overlay { bottom: 16px; right: 12px; left: auto; min-height: 42px; min-width: 144px; }
+  .flight-deck .flight-telemetry { bottom: 168px; left: 12px; }
+  .flight-deck .flight-feedback-overlay { bottom: 175px; right: 12px; }
+  .flight-deck .tutorial-flight-guide { left: 12px; width: calc(100% - 24px); top: 12px; }
+}

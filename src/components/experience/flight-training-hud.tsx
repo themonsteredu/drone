@@ -18,6 +18,7 @@ export interface FlightTrainingHudProps {
     total: number;
   };
   warning?: string;
+  showObjective?: boolean;
 }
 
 export function FlightTrainingHud({
@@ -29,11 +30,12 @@ export function FlightTrainingHud({
   remainingSeconds,
   objectiveProgress,
   warning,
+  showObjective = true,
 }: FlightTrainingHudProps) {
   const battery = Math.max(0, Math.min(100, batteryPercent));
 
   return (
-    <aside className={styles.trainingHud} aria-label="비행 정보">
+    <aside className={`${styles.trainingHud} ${!showObjective ? styles.telemetryOnly : ""}`} aria-label="비행 정보">
       <div className={styles.telemetryRow}>
         <dl>
           <div>
@@ -68,7 +70,7 @@ export function FlightTrainingHud({
         </dl>
       </div>
 
-      <div className={styles.objectivePanel} aria-live="polite">
+      {showObjective ? <div className={styles.objectivePanel} aria-live="polite">
         <span>현재 목표</span>
         <strong>{objective}</strong>
         {objectiveProgress ? (
@@ -76,7 +78,7 @@ export function FlightTrainingHud({
             진행 {objectiveProgress.current} / {objectiveProgress.total}
           </small>
         ) : null}
-      </div>
+      </div> : null}
 
       {warning ? (
         <p className={styles.hudWarning} role="alert">
@@ -86,4 +88,3 @@ export function FlightTrainingHud({
     </aside>
   );
 }
-

@@ -59,8 +59,6 @@ export function MissionFlightOverlay({
   routePercent,
   collisionCount,
   destinationDistanceMeters,
-  altitudeMeters,
-  batteryPercent,
   windActive,
   payloadIntegrityPercent,
   corridorViolationCount,
@@ -182,7 +180,7 @@ export function MissionFlightOverlay({
         className={`${styles.missionBrief} ${medical ? styles.missionBriefMedical : styles.missionBriefSearch}`}
         aria-label={`${title} 현재 목표`}
       >
-        <p>{selectedPlan?.label ?? title} · {roleTitle}</p>
+        <p>{title}<span>{selectedPlan?.label}</span></p>
         <h3>{objective}</h3>
         <div className={styles.missionBriefProgress}>
           <span>
@@ -214,10 +212,6 @@ export function MissionFlightOverlay({
                 ? "구조 신호 감지됨"
                 : `다음 수색 지점 ${Math.round(destinationDistanceMeters)}m`}
           </strong>
-        </div>
-        <div>
-          <span aria-hidden="true">↥</span>
-          <strong>고도 {altitudeMeters.toFixed(1)}m · 배터리 {Math.round(batteryPercent)}%</strong>
         </div>
         <div className={outsideSelectedCorridor || payloadIntegrityPercent < 70 ? styles.missionConditionAlert : ""}>
           <span aria-hidden="true">◇</span>

@@ -3136,3 +3136,100 @@
     display: none;
   }
 }
+
+/* Flight-deck redesign: short guidance, one telemetry strip, clear sight lines. */
+.statusHud {
+  background: #f9fbfc;
+  color: #263e49;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 62px;
+  border: 0;
+  box-shadow: none;
+}
+.statusBrand { display: flex; flex: 0 1 auto; }
+.statusBrand p { color: #63838c; font-size: 12px; margin-bottom: 3px; }
+.statusBrand h2 { color: #213740; font-size: 16px; font-weight: 700; letter-spacing: -0.035em; }
+.statusSummary { display: flex; flex-wrap: wrap; gap: 12px 26px; width: auto; margin: 0; }
+.statusSummary > div { background: none; border: 0; border-radius: 0; padding: 0; min-width: 80px; }
+.statusSummary dt { color: #697c85; font-size: 12px; font-weight: 400; margin-bottom: 3px; }
+.statusSummary dd { color: #233d48; font-size: 14px; line-height: 1.4; }
+.statusSummary .missing { color: #b44838; }
+.statusSummary .connected { color: #23745b; }
+.statusSummary dd small { display: none; }
+.experienceNavigation { background: #f1f5f6; border: 0; border-radius: 0; }
+.experienceNavigation ol { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 0 10px; }
+.experienceNavigation li { display: flex; gap: 8px; min-height: 46px; padding: 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+.experienceNavigation li:not(:last-child)::after { display: none; }
+.experienceNavigation li > span { height: 22px; width: 22px; min-width: 22px; font-size: 12px; border: 1px solid #b4c2c8; background: transparent; color: #627680; box-shadow: none; }
+.experienceNavigation li small { display: none; }
+.experienceNavigation li strong { color: #788992; font-size: 12px; line-height: 1.4; font-weight: 500; word-break: keep-all; }
+.experienceNavigation .navigationCurrent { background: #e2edee; border-bottom-color: #237877; }
+.experienceNavigation .navigationCurrent > span { background: #237877; color: white; border-color: #237877; }
+.experienceNavigation .navigationCurrent strong { color: #175e60; font-weight: 700; }
+.experienceNavigation .navigationComplete > span { color: #328879; background: transparent; border-color: #84aca5; }
+
+.missionBrief { left: 22px; top: 20px; width: calc(100% - 290px); max-width: 670px; padding: 13px 17px; border-radius: 6px; background: #fafcfaf0; border: 1px solid #ffffff80; box-shadow: 0 4px 22px #213b4420; }
+.missionBrief::before { inset: 0 auto 0 0; height: auto; width: 3px; border-radius: 6px 0 0 6px; background: #29857c; }
+.missionBriefSearch::before { background: #be7834; }
+.missionBrief p { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 12px; margin: 0 0 5px; color: #24776e; font-size: 12px; }
+.missionBrief p span { color: #667e81; font-weight: 400; }
+.missionBrief h3 { font-size: 16px; line-height: 1.55; font-weight: 500; color: #203e44; letter-spacing: -0.025em; word-break: keep-all; overflow-wrap: break-word; }
+.missionBriefProgress { display: flex; align-items: center; gap: 14px; border: 0; padding: 0; margin-top: 8px; }
+.missionBriefProgress span { margin: 0; flex-shrink: 0; color: #63797b; font-size: 12px; }
+.missionBriefProgress progress { height: 4px; accent-color: #267d76; width: min(180px, 40%); }
+.missionConditionStack { right: 22px; top: 20px; width: 216px; gap: 0; padding: 0 12px; background: #f7faf9ed; border: 1px solid #ffffff80; border-radius: 6px; box-shadow: 0 4px 22px #213b4420; }
+.missionConditionStack > div { background: none; border: 0; border-bottom: 1px solid #a8babb4a; border-radius: 0; box-shadow: none; backdrop-filter: none; padding: 10px 0; min-height: 39px; gap: 9px; font-size: 12px; color: #29444c; }
+.missionConditionStack > div:last-child { border-bottom: 0; }
+.missionConditionStack > div > span { font-size: 15px; color: #337d79; }
+.missionConditionStack > div strong { font-weight: 500; }
+.missionConditionStack .missionConditionProgress > strong { font-size: 17px; color: #246c70; }
+
+.trainingHud { position: absolute; inset: auto 202px 20px 22px; display: grid; grid-template-columns: minmax(260px, 1.3fr) minmax(190px, 1fr); align-items: stretch; gap: 10px; padding: 0; z-index: 6; }
+.trainingHud.telemetryOnly { grid-template-columns: 1fr; max-width: 630px; }
+.telemetryRow, .objectivePanel { background: #172c31e8; border: 1px solid #b1c4c537; border-radius: 6px; box-shadow: none; backdrop-filter: blur(12px); }
+.telemetryRow dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0; padding: 10px 2px; }
+.telemetryRow dl > div { border: 0; border-right: 1px solid #c1d4d42b; border-radius: 0; background: none; min-width: 0; padding: 0 14px; }
+.telemetryRow dl > div:last-child { border-right: 0; }
+.telemetryRow dt { font-size: 12px; font-weight: 400; color: #b4c8ca; margin-bottom: 3px; }
+.telemetryRow dd { color: #f2f9f8; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.25; }
+.telemetryRow meter { display: block; width: 100%; height: 3px; margin-top: 3px; accent-color: #90bfb3; }
+.objectivePanel { padding: 10px 14px; min-width: 0; }
+.objectivePanel > span { font-size: 12px; color: #b4c8ca; }
+.objectivePanel > strong { display: block; color: white; font-size: 14px; font-weight: 400; line-height: 1.5; white-space: normal; word-break: keep-all; overflow: visible; }
+.objectivePanel small { color: #b4c8ca; font-size: 12px; }
+.hudWarning { grid-column: 1 / -1; font-size: 14px; margin: 0; padding: 9px 14px; border-radius: 6px; }
+.handoverPrompt, .searchActionPrompt { border-radius: 8px; }
+.searchActionPrompt { bottom: 120px; max-width: 460px; }
+.windNotice { top: auto; bottom: 120px; border-radius: 6px; max-width: 370px; background: #925722eb; }
+
+@media (max-width: 1000px) {
+  .statusBrand { display: none; }
+  .statusSummary { width: 100%; justify-content: space-between; gap: 10px; }
+  .missionBrief { width: calc(100% - 275px); }
+  .trainingHud { grid-template-columns: 1fr; max-width: 520px; }
+  .objectivePanel { display: block; }
+}
+@media (max-width: 760px) {
+  .statusSummary > div { min-width: 0; }
+  .statusSummary dd { font-size: 12px; }
+  .statusSummary > div:nth-child(2) { display: none; }
+  .experienceNavigation ol { padding: 0 4px; }
+  .experienceNavigation li { justify-content: center; gap: 5px; padding: 8px 2px; }
+  .experienceNavigation li small { display: block; font-size: 12px; color: #71848b; }
+  .experienceNavigation li strong { display: none; }
+  .experienceNavigation li > span { width: 18px; height: 18px; min-width: 18px; font-size: 11px; }
+  .missionBrief { top: 12px; left: 12px; width: calc(100% - 24px); max-width: none; padding: 10px 14px; }
+  .missionBrief h3 { font-size: 14px; }
+  .missionConditionStack { top: auto; bottom: 170px; right: 12px; width: 180px; padding: 0 10px; }
+  .missionConditionStack > div { min-height: 32px; padding: 7px 0; font-size: 12px; }
+  .missionConditionStack > div:nth-child(n + 3) { display: flex; }
+  .trainingHud, .trainingHud.telemetryOnly { inset: auto 12px 70px; max-width: none; grid-template-columns: 1fr; }
+  .telemetryRow dl > div { padding: 0 10px; }
+  .telemetryRow dd { font-size: 19px; }
+  .searchActionPrompt { bottom: 240px; max-width: calc(100% - 24px); }
+  .windNotice { bottom: 235px; max-width: calc(100% - 24px); }
+}

@@ -1173,7 +1173,7 @@ export function DroneSimulator({
 
   return (
     <section
-      className="pilot-card simulator-card"
+      className="pilot-card simulator-card flight-deck"
       aria-labelledby="drone-simulator-title"
     >
       <StudentStatusHud
@@ -1397,6 +1397,7 @@ export function DroneSimulator({
             ) : null}
             {!["START", "CONNECTING", "CONTROL_GUIDE"].includes(domainStage) ? (
               <FlightTrainingHud
+                showObjective={domainStage !== "MISSION"}
                 altitudeMeters={telemetry.position.y}
                 speedMetersPerSecond={horizontalSpeed}
                 batteryPercent={missionBattery}

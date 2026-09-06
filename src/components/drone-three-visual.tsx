@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { createIndustrialDrone } from "./industrial-drone-model";
+import { photographicSurface, createSceneResources, createDaylightEnvironment, addNaturalMountains, addNaturalTrees, naturalRockGeometry } from "./flight-scene-resources";
 import type { DroneTransform } from "../simulator/drone-transform";
 import {
   EMPTY_DRONE_SCENE,
@@ -24,17 +26,8 @@ interface NavigatorWithDeviceMemory extends Navigator {
   deviceMemory?: number;
 }
 
-interface DroneModel {
-  root: THREE.Group;
-  tilt: THREE.Group;
-  rotors: THREE.Group[];
-  shadow: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
-}
-
 const FORWARD = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
-const FRONT_ROTOR_COLOR = 0xff783f;
-const REAR_ROTOR_COLOR = 0x3478f6;
 const LANDING_PAD_VISUAL_SCALE = 1.18;
 const LANDING_PAD_SURFACE_Y = 0.04;
 // The landing feet end at local Y -0.605. Keep them a few millimetres above
@@ -62,191 +55,14 @@ function configureShadow(mesh: THREE.Object3D, enabled: boolean): void {
   });
 }
 
-function makeArm(
-  end: THREE.Vector3,
-  material: THREE.Material,
-): THREE.Mesh<THREE.CylinderGeometry, THREE.Material> {
-  const start = new THREE.Vector3(0, 0.03, 0);
-  const direction = end.clone().sub(start);
-  const arm = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.075, 0.095, direction.length(), 8),
-    material,
-  );
-  arm.position.copy(start).add(end).multiplyScalar(0.5);
-  arm.quaternion.setFromUnitVectors(UP, direction.clone().normalize());
-  return arm;
-}
-
-function createDroneModel(shadows: boolean): DroneModel {
-  const root = new THREE.Group();
-  const tilt = new THREE.Group();
-  root.add(tilt);
-
-  const white = meshMaterial(0xf8fbff, 0.32, 0.18);
-  const navy = meshMaterial(0x152b47, 0.48, 0.32);
-  const blue = meshMaterial(0x256ff2, 0.38, 0.2);
-  const orange = meshMaterial(0xff6f3c, 0.45, 0.12);
-  const black = meshMaterial(0x07121f, 0.28, 0.48);
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.74, 20, 12), white);
-  body.scale.set(1, 0.42, 1.28);
-  body.position.y = 0.12;
-  tilt.add(body);
-
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.48, 18, 10), navy);
-  canopy.scale.set(0.92, 0.38, 1.05);
-  canopy.position.set(0, 0.37, -0.04);
-  tilt.add(canopy);
-
-  const topPanel = new THREE.Mesh(
-    new THREE.BoxGeometry(0.38, 0.055, 0.78),
-    blue,
-  );
-  topPanel.position.set(0, 0.55, 0.06);
-  topPanel.rotation.x = -0.04;
-  tilt.add(topPanel);
-
-  const noseLight = new THREE.Mesh(
-    new THREE.BoxGeometry(0.34, 0.09, 0.07),
-    orange,
-  );
-  noseLight.position.set(0, 0.2, 0.93);
-  tilt.add(noseLight);
-
-  const camera = new THREE.Mesh(
-    new THREE.BoxGeometry(0.24, 0.18, 0.2),
-    black,
-  );
-  camera.position.set(0, -0.18, 0.68);
-  tilt.add(camera);
-
-  const rotorPositions = [
-    new THREE.Vector3(-1.06, 0.12, 0.78),
-    new THREE.Vector3(1.06, 0.12, 0.78),
-    new THREE.Vector3(-1.06, 0.12, -0.78),
-    new THREE.Vector3(1.06, 0.12, -0.78),
-  ];
-  const rotors: THREE.Group[] = [];
-
-  for (const position of rotorPositions) {
-    tilt.add(makeArm(position, navy));
-    const isFrontRotor = position.z > 0;
-    const rotorColor = isFrontRotor
-      ? FRONT_ROTOR_COLOR
-      : REAR_ROTOR_COLOR;
-
-    const motor = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.2, 0.23, 12),
-      isFrontRotor ? orange : blue,
-    );
-    motor.position.copy(position);
-    tilt.add(motor);
-
-    const rotor = new THREE.Group();
-    rotor.position.copy(position).add(new THREE.Vector3(0, 0.18, 0));
-    const bladeMaterial = new THREE.MeshStandardMaterial({
-      color: rotorColor,
-      roughness: 0.34,
-      transparent: true,
-      opacity: 0.82,
-      depthWrite: false,
-    });
-    const bladeGeometry = new THREE.BoxGeometry(0.92, 0.018, 0.09);
-    const firstBlade = new THREE.Mesh(bladeGeometry, bladeMaterial);
-    const secondBlade = firstBlade.clone();
-    secondBlade.rotation.y = Math.PI / 2;
-    rotor.add(firstBlade, secondBlade);
-    tilt.add(rotor);
-    rotors.push(rotor);
-  }
-
-  for (const x of [-0.48, 0.48]) {
-    const leg = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.045, 0.48, 7),
-      navy,
-    );
-    leg.position.set(x, -0.34, -0.05);
-    leg.rotation.z = x < 0 ? -0.15 : 0.15;
-    tilt.add(leg);
-
-    const foot = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.035, 0.62, 7),
-      navy,
-    );
-    foot.position.set(x + Math.sign(x) * 0.04, -0.57, -0.02);
-    foot.rotation.z = Math.PI / 2;
-    tilt.add(foot);
-  }
-
-  const shadowMaterial = new THREE.MeshBasicMaterial({
-    color: 0x17304a,
-    transparent: true,
-    opacity: 0.18,
-    depthWrite: false,
-  });
-  const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.86, 24),
-    shadowMaterial,
-  );
-  shadow.rotation.x = -Math.PI / 2;
-
-  configureShadow(root, shadows);
-  return { root, tilt, rotors, shadow };
-}
-
-function addSkyDome(scene: THREE.Scene): THREE.ShaderMaterial {
-  const skyMaterial = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    uniforms: {
-      topColor: { value: new THREE.Color(0x57b8f4) },
-      horizonColor: { value: new THREE.Color(0xeaf8ff) },
-      lowerColor: { value: new THREE.Color(0xf7fbf4) },
-    },
-    vertexShader: `
-      varying float vHeight;
-      void main() {
-        vHeight = normalize(position).y;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 topColor;
-      uniform vec3 horizonColor;
-      uniform vec3 lowerColor;
-      varying float vHeight;
-      void main() {
-        float skyMix = smoothstep(-0.02, 0.72, vHeight);
-        float groundMix = smoothstep(-0.18, 0.02, vHeight);
-        vec3 lower = mix(lowerColor, horizonColor, groundMix);
-        gl_FragColor = vec4(mix(lower, topColor, skyMix), 1.0);
-      }
-    `,
-  });
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(135, 20, 12),
-    skyMaterial,
-  );
-  scene.add(dome);
-
-  const sun = new THREE.Mesh(
-    new THREE.SphereGeometry(2.4, 12, 8),
-    new THREE.MeshBasicMaterial({ color: 0xfff2bf, fog: false }),
-  );
-  sun.position.set(-34, 28, 74);
-  scene.add(sun);
-  return skyMaterial;
-}
-
 function applyAtmosphere(
   scene: THREE.Scene,
   skyMaterial: THREE.ShaderMaterial,
   environment: NonNullable<DroneScenePresentation["environment"]>,
 ): void {
   const palette = environmentPalette(environment);
-  skyMaterial.uniforms.topColor.value.setHex(palette.top);
-  skyMaterial.uniforms.horizonColor.value.setHex(palette.horizon);
-  skyMaterial.uniforms.lowerColor.value.setHex(palette.lower);
+  skyMaterial.uniforms.turbidity.value = environment === "disaster-zone" ? 5.5 : 3.2;
+  skyMaterial.uniforms.rayleigh.value = environment === "disaster-zone" ? 0.9 : 1.4;
   scene.background = new THREE.Color(palette.horizon);
   scene.fog = new THREE.Fog(palette.fog, palette.fogNear, palette.fogFar);
 }
@@ -287,7 +103,7 @@ function createMedicalCargoBox(): THREE.Group {
 }
 
 function addRunway(scene: THREE.Object3D): void {
-  const groundMaterial = meshMaterial(0x87aa78, 1, 0);
+  const groundMaterial = photographicSurface("grass", 0xd4d7c0);
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(150, 190),
     groundMaterial,
@@ -299,14 +115,14 @@ function addRunway(scene: THREE.Object3D): void {
 
   const apron = new THREE.Mesh(
     new THREE.PlaneGeometry(32, 120),
-    meshMaterial(0xd8e0e1, 0.96, 0.01),
+    photographicSurface("asphalt", 0xa5abad),
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.set(0, -0.045, 34);
   apron.receiveShadow = true;
   scene.add(apron);
 
-  const shoulderMaterial = meshMaterial(0xb7c6c5, 0.98, 0);
+  const shoulderMaterial = photographicSurface("stone", 0xa5a69f);
   for (const x of [-15, 15]) {
     const shoulder = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 120),
@@ -350,176 +166,14 @@ function addRunway(scene: THREE.Object3D): void {
   }
 }
 
-function addHillsAndTrees(
-  scene: THREE.Object3D,
-  treeCount: number,
-  shadows: boolean,
-): void {
-  const addRidge = (
-    z: number,
-    peaks: readonly (readonly [number, number])[],
-    color: number,
-  ) => {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    for (const [x, y] of peaks) {
-      positions.push(x, y, z, x, -2, z);
-    }
-    for (let index = 0; index < peaks.length - 1; index += 1) {
-      const top = index * 2;
-      const bottom = top + 1;
-      const nextTop = top + 2;
-      const nextBottom = top + 3;
-      indices.push(top, bottom, nextTop, bottom, nextBottom, nextTop);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(positions, 3),
-    );
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const ridge = new THREE.Mesh(
-      geometry,
-      new THREE.MeshStandardMaterial({
-        color,
-        roughness: 1,
-        metalness: 0,
-        side: THREE.DoubleSide,
-        fog: true,
-      }),
-    );
-    ridge.receiveShadow = shadows;
-    scene.add(ridge);
-  };
-
-  // Two lightweight irregular silhouettes replace the stretched sphere hills.
-  // They keep a calm horizon while using only a few triangles and draw calls.
-  addRidge(
-    112,
-    [
-      [-78, 4.2],
-      [-64, 7.1],
-      [-50, 5.8],
-      [-34, 8.4],
-      [-19, 6.1],
-      [-3, 9.2],
-      [14, 6.4],
-      [31, 8.7],
-      [47, 5.7],
-      [63, 7.6],
-      [78, 4.4],
-    ],
-    0xa3b8a0,
-  );
-  addRidge(
-    91,
-    [
-      [-78, 2.2],
-      [-65, 4.8],
-      [-51, 3.7],
-      [-38, 6.3],
-      [-23, 4.5],
-      [-8, 5.8],
-      [8, 3.6],
-      [24, 6.5],
-      [41, 4.2],
-      [57, 5.5],
-      [78, 2.3],
-    ],
-    0x759670,
-  );
-
-  const trunkGeometry = new THREE.CylinderGeometry(0.11, 0.18, 1.15, 7);
-  const lowerCrownGeometry = new THREE.DodecahedronGeometry(0.78, 0);
-  const upperCrownGeometry = new THREE.DodecahedronGeometry(0.62, 0);
-  const trunkMaterial = meshMaterial(0x6f5038, 1, 0);
-  const crownMaterial = meshMaterial(0x3e7551, 0.98, 0);
-  const trunks = new THREE.InstancedMesh(
-    trunkGeometry,
-    trunkMaterial,
-    treeCount,
-  );
-  const lowerCrowns = new THREE.InstancedMesh(
-    lowerCrownGeometry,
-    crownMaterial,
-    treeCount,
-  );
-  const upperCrowns = new THREE.InstancedMesh(
-    upperCrownGeometry,
-    crownMaterial,
-    treeCount,
-  );
-  const transform = new THREE.Matrix4();
-  const rotation = new THREE.Quaternion();
-  const treeColors = [0x356a48, 0x447d55, 0x527f50] as const;
-  for (let index = 0; index < treeCount; index += 1) {
-    const side = index % 2 === 0 ? -1 : 1;
+function addHillsAndTrees(scene: THREE.Object3D, treeCount: number, shadows: boolean): void {
+  addNaturalMountains(scene);
+  const positions: Array<readonly [number, number]> = [];
+  for (let index = 0; index < treeCount; index++) {
     const row = Math.floor(index / 2);
-    const x = side * (19 + ((row * 11 + (index % 3) * 3) % 24));
-    const z = 3 + ((row * 13 + (index % 4) * 5) % 76);
-    const scale = 0.78 + (row % 5) * 0.1;
-    rotation.setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      (row % 7) * 0.31,
-    );
-    transform.compose(
-      new THREE.Vector3(x, 0.52 * scale, z),
-      rotation,
-      new THREE.Vector3(scale, scale, scale),
-    );
-    trunks.setMatrixAt(index, transform);
-    transform.compose(
-      new THREE.Vector3(x, 1.48 * scale, z),
-      rotation,
-      new THREE.Vector3(scale * 1.02, scale * 1.2, scale * 0.92),
-    );
-    lowerCrowns.setMatrixAt(index, transform);
-    transform.compose(
-      new THREE.Vector3(x + 0.08 * side, 2.24 * scale, z),
-      rotation,
-      new THREE.Vector3(scale * 0.82, scale, scale * 0.78),
-    );
-    upperCrowns.setMatrixAt(index, transform);
-    const color = new THREE.Color(treeColors[row % treeColors.length]);
-    lowerCrowns.setColorAt(index, color);
-    upperCrowns.setColorAt(index, color.clone().offsetHSL(0, 0, 0.035));
+    positions.push([(index % 2 === 0 ? -1 : 1) * (19 + (row * 11 % 22)), 3 + (row * 13 % 75)]);
   }
-  if (lowerCrowns.instanceColor) lowerCrowns.instanceColor.needsUpdate = true;
-  if (upperCrowns.instanceColor) upperCrowns.instanceColor.needsUpdate = true;
-  trunks.castShadow = shadows;
-  lowerCrowns.castShadow = shadows;
-  upperCrowns.castShadow = shadows;
-  scene.add(trunks, lowerCrowns, upperCrowns);
-}
-
-function addSkyDetails(scene: THREE.Object3D): void {
-  const cloudMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.72,
-    depthWrite: false,
-    fog: false,
-  });
-  const positions = [
-    [-18, 14, 30],
-    [22, 17, 52],
-    [-38, 19, 68],
-  ] as const;
-  for (const [x, y, z] of positions) {
-    const cloud = new THREE.Group();
-    for (let index = 0; index < 4; index += 1) {
-      const puff = new THREE.Mesh(
-        new THREE.SphereGeometry(1.4 + (index % 2) * 0.45, 10, 7),
-        cloudMaterial,
-      );
-      puff.position.set((index - 1.5) * 1.35, (index % 2) * 0.4, 0);
-      puff.scale.y = 0.62;
-      cloud.add(puff);
-    }
-    cloud.position.set(x, y, z);
-    scene.add(cloud);
-  }
+  addNaturalTrees(scene, positions, shadows);
 }
 
 function disposeGroup(group: THREE.Group): void {
@@ -668,7 +322,7 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
       : 0x667b8d;
   const building = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
-    meshMaterial(facadeColor, 0.78, 0.04),
+    photographicSurface("stone", facadeColor),
   );
   building.position.set(marker.position.x, centerY, marker.position.z);
   group.add(building);
@@ -713,8 +367,8 @@ function addBuilding(marker: DroneSceneMarker, group: THREE.Group): void {
     group.add(facadeCross);
   }
 
-  const windowMaterial = new THREE.MeshBasicMaterial({
-    color: isHospital ? 0x7fc7ef : 0xb7e1f5,
+  const windowMaterial = new THREE.MeshPhysicalMaterial({
+    color: isHospital ? 0x607a81 : 0x536d78, roughness: 0.15, metalness: 0.55, clearcoat: 1,
   });
   const windowRows = Math.max(1, Math.min(4, Math.floor(height / 1.45)));
   const windowColumns = Math.max(2, Math.min(5, Math.floor(width / 1.2)));
@@ -772,7 +426,7 @@ function addRubble(marker: DroneSceneMarker, group: THREE.Group): void {
     const pieceHeight = height * piece.height;
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(width * piece.width, pieceHeight, depth * piece.depth),
-      meshMaterial(concrete[index], 0.92, 0.02),
+      photographicSurface("stone", concrete[index]),
     );
     mesh.position.set(
       marker.position.x + width * piece.x,
@@ -798,7 +452,7 @@ function addDamagedBuilding(
   const width = Math.max(2.2, marker.size?.x ?? 3.5);
   const height = Math.max(3.2, marker.size?.y ?? 4.5);
   const depth = Math.max(2.2, marker.size?.z ?? 3.5);
-  const concrete = meshMaterial(0x69777d, 0.92, 0.02);
+  const concrete = photographicSurface("stone", 0x909c9f);
   const left = new THREE.Mesh(
     new THREE.BoxGeometry(width * 0.62, height, depth),
     concrete,
@@ -867,16 +521,16 @@ function addRockSlope(marker: DroneSceneMarker, group: THREE.Group): void {
   const width = Math.max(2, marker.size?.x ?? 3.5);
   const height = Math.max(2.8, marker.size?.y ?? 5.5);
   const depth = Math.max(2, marker.size?.z ?? 3.5);
-  const stone = meshMaterial(0x7f846f, 1, 0);
-  const slope = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), stone);
+  const stone = photographicSurface("stone", 0xb4b0a3);
+  const slope = new THREE.Mesh(naturalRockGeometry(1, 3), stone);
   slope.scale.set(width * 0.46, height * 0.5, depth * 0.5);
   slope.position.set(marker.position.x, height * 0.5, marker.position.z);
   slope.rotation.set(0.08, marker.position.x * 0.13, -0.05);
   group.add(slope);
 
   const outcrop = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(Math.min(width, depth) * 0.38, 0),
-    meshMaterial(0x9a8a70, 1, 0),
+    naturalRockGeometry(Math.min(width, depth) * 0.38, 2),
+    photographicSurface("stone", 0xaaa49c),
   );
   outcrop.scale.y = 0.62;
   outcrop.position.set(
@@ -894,7 +548,7 @@ function addCommandCenter(marker: DroneSceneMarker, group: THREE.Group): void {
   const centerY = height / 2 + 0.02;
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
-    meshMaterial(0xe5ebee, 0.86, 0.02),
+    photographicSurface("stone", 0xd1d5d6),
   );
   base.position.set(marker.position.x, centerY, marker.position.z);
   group.add(base);
@@ -1209,7 +863,7 @@ export function DroneThreeVisual({
     renderer.setPixelRatio(quality.pixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.95;
     renderer.shadowMap.enabled = quality.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.dataset.renderer = "threejs";
@@ -1222,17 +876,20 @@ export function DroneThreeVisual({
     scene.background = new THREE.Color(0x8fd3fb);
     scene.fog = new THREE.Fog(0xdceff2, 66, 145);
 
-    const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 180);
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 300);
     camera.position.set(7.5, 5.5, -9.5);
     const lookTarget = new THREE.Vector3(0, 1.2, 3.5);
 
-    const hemisphere = new THREE.HemisphereLight(0xeaf8ff, 0x6f8063, 2.2);
+    const hemisphere = new THREE.HemisphereLight(0xd4e4f3, 0x656654, 0.7);
     scene.add(hemisphere);
-    const sun = new THREE.DirectionalLight(0xfff3d2, 2.35);
+    const sun = new THREE.DirectionalLight(0xffefd6, 2.7);
     sun.position.set(-18, 28, -16);
     sun.castShadow = quality.shadows;
     if (quality.shadows) {
-      sun.shadow.mapSize.set(512, 512);
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.bias = -0.00025;
+      sun.shadow.normalBias = 0.035;
+      sun.shadow.radius = 2;
       sun.shadow.camera.near = 1;
       sun.shadow.camera.far = 75;
       sun.shadow.camera.left = -24;
@@ -1242,7 +899,10 @@ export function DroneThreeVisual({
     }
     scene.add(sun);
 
-    const skyMaterial = addSkyDome(scene);
+    const daylight = createDaylightEnvironment(renderer, scene);
+    scene.add(daylight.sky);
+    const skyMaterial = daylight.sky.material;
+    const surfaces = createSceneResources(renderer);
     const trainingEnvironment = new THREE.Group();
     trainingEnvironment.name = "training-environment";
     addRunway(trainingEnvironment);
@@ -1251,7 +911,7 @@ export function DroneThreeVisual({
       quality.treeCount,
       quality.shadows,
     );
-    addSkyDetails(trainingEnvironment);
+    surfaces.apply(trainingEnvironment);
     scene.add(trainingEnvironment);
 
     let activeEnvironment: NonNullable<
@@ -1267,7 +927,7 @@ export function DroneThreeVisual({
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
 
-    const drone = createDroneModel(quality.shadows);
+    const drone = createIndustrialDrone(quality.shadows);
     scene.add(drone.root, drone.shadow);
     const medicalCargo = createMedicalCargoBox();
     configureShadow(medicalCargo, quality.shadows);
@@ -1340,6 +1000,7 @@ export function DroneThreeVisual({
           treeCount: quality.treeCount,
           shadows: quality.shadows,
         });
+        surfaces.apply(missionEnvironment);
         scene.add(missionEnvironment);
         applyAtmosphere(scene, skyMaterial, activeEnvironment);
         camera.fov = activeEnvironment === "training" ? 48 : 54;
@@ -1350,6 +1011,7 @@ export function DroneThreeVisual({
       if (signature !== markerState) {
         markerState = signature;
         rebuildMarkers(presentation.markers, markerGroup, quality.shadows);
+        surfaces.apply(markerGroup);
       }
 
       drone.root.position.set(
@@ -1409,7 +1071,7 @@ export function DroneThreeVisual({
         grounded ? 0 : -transform.tilt.roll,
         reducedMotion || grounded ? 1 : 0.18,
       );
-      const rotorTurn = deltaSeconds * (3 + transform.rotorSpeed * 58);
+      const rotorTurn = deltaSeconds * Math.max(0, transform.rotorSpeed) * 76;
       for (const [index, rotor] of drone.rotors.entries()) {
         rotor.rotation.y += rotorTurn * (index % 2 === 0 ? 1 : -1);
       }
@@ -1436,12 +1098,12 @@ export function DroneThreeVisual({
         const forwardX = Math.sin(yaw);
         const forwardZ = Math.cos(yaw);
         const missionView = activeEnvironment !== "training";
-        const followDistance = missionView ? 8.9 : 7.4;
-        const cameraHeight = missionView ? 4.8 : 4.1;
-        const lookAhead = missionView ? 4.7 : 3.2;
+        const followDistance = missionView ? 7.6 : 7.4;
+        const cameraHeight = missionView ? 3.8 : 4.1;
+        const lookAhead = missionView ? 6.8 : 4.5;
         desiredCamera.set(
           transform.position.x - forwardX * followDistance,
-          Math.max(missionView ? 5.2 : 4.6, transform.position.y + cameraHeight),
+          Math.max(missionView ? 4.1 : 4.6, transform.position.y + cameraHeight),
           transform.position.z - forwardZ * followDistance,
         );
         desiredLook.set(
@@ -1496,6 +1158,8 @@ export function DroneThreeVisual({
           : [object.material];
         for (const material of materials) material.dispose();
       });
+      surfaces.dispose();
+      daylight.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
